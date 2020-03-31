@@ -3,15 +3,12 @@
 use jack as j;
 use futures::executor::LocalPool;
 
-mod format;
-mod data;
-mod dsp;
+use libfoxlive::format;
+use libfoxlive::dsp::jack::*;
+use libfoxlive::dsp::graph::Graph;
+use libfoxlive::dsp::media::MediaView;
 
-use dsp::jack::*;
-use dsp::graph::Graph;
-use dsp::media::MediaView;
-
-use format::media::Media;
+use libfoxlive::format::media::Media;
 
 
 
@@ -20,10 +17,10 @@ fn main() {
 
     let client = j::Client::new("foxlive", jack::ClientOptions::NO_START_SERVER)
                      .unwrap().0;
-    let mut media = Box::new(Media::<f32>::new("./test.opus"));
+    let mut media = Box::new(Media::new("./test.opus"));
     let reader = media.read_audio(None, 48000, None);
 
-    let mut graph = Graph::<f32, j::ProcessScope>::new();
+    let mut graph = Graph::new();
     let media_view = graph.add_node(MediaView::new(media, 1.0));
     let master = graph.add_child(media_view, JackOutput::acquire(&client, "master", 2));
     graph.updated();

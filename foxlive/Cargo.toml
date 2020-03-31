@@ -1,0 +1,17 @@
+[package]
+name = "foxlive"
+version = "0.1.0"
+authors = ["bkfox <thomas bkfox net>"]
+edition = "2018"
+
+[dependencies]
+petgraph="0.5.0"
+futures="0.3.4"
+futures-util="0.3.4"
+jack="0.6.2"
+libfoxlive= { path = "../libfoxlive" }
+
+
+[build-dependencies]
+bindgen = "0.53.2"
+

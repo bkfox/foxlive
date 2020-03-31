@@ -1,3 +1,46 @@
+//! Implement DSP for jack audio ports, as source and sink dsp nodes in the audio g`Graph`.
+//! 
+//! # Examples
+//!
+//! ```
+//! use jack as j;
+//! use futures::executor::LocalPool;
+//!
+//! use foxlive::dsp::jack::*;
+//! use foxlive::dsp::graph::Graph;
+//! use foxlive::dsp::media::MediaView;
+//! use foxlive::format;
+//! use foxlive::format::media::Media;
+//!
+//!
+//! fn main() {
+//!     format::init();
+
+//!     let client = j::Client::new("foxlive", jack::ClientOptions::NO_START_SERVER)
+//!                      .unwrap().0;
+//!     let mut media = Box::new(Media::new("./test.opus"));
+//!     let reader = media.read_audio(None, 48000, None);
+
+//!     let mut graph = Graph::new();
+//!     let media_view = graph.add_node(MediaView::new(media, 1.0));
+//!     let master = graph.add_child(media_view, JackOutput::acquire(&client, "master", 2));
+//!     graph.updated();
+
+//!     let process_handler = j::ClosureProcessHandler::new(
+//!         move |client: &j::Client, scope: &j::ProcessScope| {
+//!             graph.process_nodes(scope);
+//!             j::Control::Continue
+//!         },
+//!     );
+
+//!     let active_client = client.activate_async((), process_handler).unwrap();
+
+//!     let mut pool = LocalPool::new();
+//!     pool.run_until(reader.unwrap());
+//!     loop {}
+//! }
+//! ```
+//!
 use std::iter::FromIterator;
 
 use jack as j;
