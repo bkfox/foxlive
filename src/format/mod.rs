@@ -9,15 +9,19 @@ mod ffi;
 #[macro_use]
 pub mod error;
 #[macro_use]
-pub mod utils;
+pub mod futures;
 
 pub mod resampler;
 
 pub mod codec;
 pub mod stream;
-pub mod media;
+pub mod format;
 pub mod reader;
+pub mod media;
 
+
+pub use format::FormatContext;
+pub use reader::Reader;
 
 
 /// Initialize crate, registering codecs and muxers.

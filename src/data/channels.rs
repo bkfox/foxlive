@@ -9,67 +9,77 @@ use super::samples::*;
 bitflags! {
     /// Channel layouts
     pub struct ChannelLayout : u64 {
-        const FrontLeft = 0x00000001;
-        const FrontRight = 0x00000002;
-        const FrontCenter = 0x00000004;
-        const LowFrequency = 0x00000008;
-        const BackLeft = 0x00000010;
-        const BackRight = 0x00000020;
-        const FrontLeftOfCenter = 0x00000040;
-        const FrontRightOfCenter = 0x00000080;
-        const BackCenter = 0x00000100;
-        const SideLeft = 0x00000200;
-        const SideRight = 0x00000400;
-        const TopCenter = 0x00000800;
-        const TopFrontLeft = 0x00001000;
-        const TopFrontCenter = 0x00002000;
-        const TopFrontRight = 0x00004000;
-        const TopBackLeft = 0x00008000;
-        const TopBackCenter = 0x00010000;
-        const TopBackRight = 0x00020000;
-        const StereoLeft = 0x20000000;
-        const StereoRight = 0x40000000;
-        // Fixme: those values require an u64
-        /*const WideLeft = 0x0000000080000000;
-        const WideRight = 0x0000000100000000;
-        const SurroundDirectLeft = 0x0000000200000000;
-        const SurroundDirectRight = 0x0000000400000000;
-        const LowFrequency_2 = 0x0000000800000000;
-        const LayoutNative = 0x8000000000000000;*/
+        const FRONT_LEFT = 0x00000001;
+        const FRONT_RIGHT = 0x00000002;
+        const FRONT_CENTER = 0x00000004;
+        const LOW_FREQUENCY = 0x00000008;
+        const BACK_LEFT = 0x00000010;
+        const BACK_RIGHT = 0x00000020;
+        const FRONT_LEFT_OF_CENTER = 0x00000040;
+        const FRONT_RIGHT_OF_CENTER = 0x00000080;
+        const BACK_CENTER = 0x00000100;
+        const SIDE_LEFT = 0x00000200;
+        const SIDE_RIGHT = 0x00000400;
+        const TOP_CENTER = 0x00000800;
+        const TOP_FRONT_LEFT = 0x00001000;
+        const TOP_FRONT_CENTER = 0x00002000;
+        const TOP_FRONT_RIGHT = 0x00004000;
+        const TOP_BACK_LEFT = 0x00008000;
+        const TOP_BACK_CENTER = 0x00010000;
+        const TOP_BACK_RIGHT = 0x00020000;
+        const STEREO_LEFT = 0x20000000;
+        const STEREO_RIGHT = 0x40000000;
+//        const WIDE_LEFT = 0x0000000080000000;
+//        const WIDE_RIGHT = 0x0000000100000000;
+//        const SURROUND_DIRECT_LEFT = 0x0000000200000000;
+//        const SURROUND_DIRECT_RIGHT = 0x0000000400000000;
+//        const LOW_FREQUENCY_2 = 0x0000000800000000;
+//        const LAYOUT_NATIVE = 0x8000000000000000;
 
-        const LayoutMono = (Self::FrontCenter.bits);
-        const LayoutStereo = (Self::FrontLeft.bits|Self::FrontRight.bits);
-        const Layout2Point1 = (Self::LayoutStereo.bits|Self::LowFrequency.bits);
-        const Layout_2_1 = (Self::LayoutStereo.bits|Self::BackCenter.bits);
-        const LayoutSurround = (Self::LayoutStereo.bits|Self::FrontCenter.bits);
-        const Layout3Point1 = (Self::LayoutSurround.bits|Self::LowFrequency.bits);
-        const Layout4Point0 = (Self::LayoutSurround.bits|Self::BackCenter.bits);
-        const Layout4Point1 = (Self::Layout4Point0.bits|Self::LowFrequency.bits);
-        const Layout2_2 = (Self::LayoutStereo.bits|Self::SideLeft.bits|Self::SideRight.bits);
-        const LayoutQuad = (Self::LayoutStereo.bits|Self::BackLeft.bits|Self::BackRight.bits);
-        const Layout5Point0 = (Self::LayoutSurround.bits|Self::SideLeft.bits|Self::SideRight.bits);
-        const Layout5Point1 = (Self::Layout5Point0.bits|Self::LowFrequency.bits);
-        const Layout5Point0Back = (Self::LayoutSurround.bits|Self::BackLeft.bits|Self::BackRight.bits);
-        const Layout5Point1Back = (Self::Layout5Point0Back.bits|Self::LowFrequency.bits);
-        const Layout6Point0 = (Self::Layout5Point0.bits|Self::BackCenter.bits);
-        const Layout6Point0Front = (Self::Layout2_2.bits|Self::FrontLeftOfCenter.bits|Self::FrontRightOfCenter.bits);
-        const LayoutHexagonal = (Self::Layout5Point0Back.bits|Self::BackCenter.bits);
-        const Layout6Point1 = (Self::Layout5Point1.bits|Self::BackCenter.bits);
-        const Layout6Point1Back = (Self::Layout5Point1Back.bits|Self::BackCenter.bits);
-        const Layout6Point1Front = (Self::Layout6Point0Front.bits|Self::LowFrequency.bits);
-        const Layout7Point0 = (Self::Layout5Point0.bits|Self::BackLeft.bits|Self::BackRight.bits);
-        const Layout7Point0Front = (Self::Layout5Point0.bits|Self::FrontLeftOfCenter.bits|Self::FrontRightOfCenter.bits);
-        const Layout7Point1 = (Self::Layout5Point1.bits|Self::BackLeft.bits|Self::BackRight.bits);
-        const Layout7Point1Wide = (Self::Layout5Point1.bits|Self::FrontLeftOfCenter.bits|Self::FrontRightOfCenter.bits);
-        const Layout7Point1WideBack = (Self::Layout5Point1Back.bits|Self::FrontLeftOfCenter.bits|Self::FrontRightOfCenter.bits);
-        const LayoutOctagonal = (Self::Layout5Point0.bits|Self::BackLeft.bits|Self::BackCenter.bits|Self::BackRight.bits);
-        // const LayoutHexadecagonal = (Self::LayoutOctagonal.bits|Self::WideLeft.bits|Self::WideRight.bits|Self::TopBackLeft.bits|Self::TopBackRight.bits|Self::TopBackCenter.bits|Self::TopFrontCenter.bits|Self::TopFrontLeft.bits|Self::TopFrontRight.bits);
-        const LayoutStereoDownmix = (Self::StereoLeft.bits|Self::StereoRight.bits);
+        const LAYOUT_MONO = (Self::FRONT_CENTER.bits);
+        const LAYOUT_STEREO = (Self::FRONT_LEFT.bits|Self::FRONT_RIGHT.bits);
+        const LAYOUT_2POINT1 = (Self::LAYOUT_STEREO.bits|Self::LOW_FREQUENCY.bits);
+        const LAYOUT_2_1 = (Self::LAYOUT_STEREO.bits|Self::BACK_CENTER.bits);
+        const LAYOUT_SURROUND = (Self::LAYOUT_STEREO.bits|Self::FRONT_CENTER.bits);
+        const LAYOUT_3POINT1 = (Self::LAYOUT_SURROUND.bits|Self::LOW_FREQUENCY.bits);
+        const LAYOUT_4POINT0 = (Self::LAYOUT_SURROUND.bits|Self::BACK_CENTER.bits);
+        const LAYOUT_4POINT1 = (Self::LAYOUT_4POINT0.bits|Self::LOW_FREQUENCY.bits);
+        const LAYOUT_2_2 = (Self::LAYOUT_STEREO.bits|Self::SIDE_LEFT.bits|Self::SIDE_RIGHT.bits);
+        const LAYOUT_QUAD = (Self::LAYOUT_STEREO.bits|Self::BACK_LEFT.bits|Self::BACK_RIGHT.bits);
+        const LAYOUT_5POINT0 = (Self::LAYOUT_SURROUND.bits|Self::SIDE_LEFT.bits|Self::SIDE_RIGHT.bits);
+        const LAYOUT_5POINT1 = (Self::LAYOUT_5POINT0.bits|Self::LOW_FREQUENCY.bits);
+        const LAYOUT_5POINT0_BACK = (Self::LAYOUT_SURROUND.bits|Self::BACK_LEFT.bits|Self::BACK_RIGHT.bits);
+        const LAYOUT_5POINT1_BACK = (Self::LAYOUT_5POINT0_BACK.bits|Self::LOW_FREQUENCY.bits);
+        const LAYOUT_6POINT0 = (Self::LAYOUT_5POINT0.bits|Self::BACK_CENTER.bits);
+        const LAYOUT_6POINT0_FRONT = (Self::LAYOUT_2_2.bits|Self::FRONT_LEFT_OF_CENTER.bits|Self::FRONT_RIGHT_OF_CENTER.bits);
+        const LAYOUT_HEXAGONAL = (Self::LAYOUT_5POINT0_BACK.bits|Self::BACK_CENTER.bits);
+        const LAYOUT_6POINT1 = (Self::LAYOUT_5POINT1.bits|Self::BACK_CENTER.bits);
+        const LAYOUT_6POINT1_BACK = (Self::LAYOUT_5POINT1_BACK.bits|Self::BACK_CENTER.bits);
+        const LAYOUT_6POINT1_FRONT = (Self::LAYOUT_6POINT0_FRONT.bits|Self::LOW_FREQUENCY.bits);
+        const LAYOUT_7POINT0 = (Self::LAYOUT_5POINT0.bits|Self::BACK_LEFT.bits|Self::BACK_RIGHT.bits);
+        const LAYOUT_7POINT0_FRONT = (Self::LAYOUT_5POINT0.bits|Self::FRONT_LEFT_OF_CENTER.bits|Self::FRONT_RIGHT_OF_CENTER.bits);
+        const LAYOUT_7POINT1 = (Self::LAYOUT_5POINT1.bits|Self::BACK_LEFT.bits|Self::BACK_RIGHT.bits);
+        const LAYOUT_7POINT1_WIDE = (Self::LAYOUT_5POINT1.bits|Self::FRONT_LEFT_OF_CENTER.bits|Self::FRONT_RIGHT_OF_CENTER.bits);
+        const LAYOUT_7POINT1_WIDE_BACK = (Self::LAYOUT_5POINT1_BACK.bits|Self::FRONT_LEFT_OF_CENTER.bits|Self::FRONT_RIGHT_OF_CENTER.bits);
+        const LAYOUT_OCTAGONAL = (Self::LAYOUT_5POINT0.bits|Self::BACK_LEFT.bits|Self::BACK_CENTER.bits|Self::BACK_RIGHT.bits);
+//         const LAYOUT_HEXADECAGONAL = (Self::LAYOUT_OCTAGONAL.bits|Self::WIDE_LEFT.bits|Self::WIDE_RIGHT.bits|Self::TOP_BACK_LEFT.bits|Self::TOP_BACK_RIGHT.bits|Self::TOP_BACK_CENTER.bits|Self::TOP_FRONT_CENTER.bits|Self::TOP_FRONT_LEFT.bits|Self::TOP_FRONT_RIGHT.bits);
+        const LAYOUT_STEREO_DOWNMIX = (Self::STEREO_LEFT.bits|Self::STEREO_RIGHT.bits);
     }
 }
 
 
 impl ChannelLayout {
+    /// Return layout for the given number of channels
+    pub fn from_n_channels(n_channels: NChannels) -> Option<Self> {
+        let layout = unsafe { ffi::av_get_default_channel_layout(n_channels as i32) };
+        Self::from_bits(layout as u64)
+    }
+
+    /// Return bits as signed
+    pub fn signed(&self) -> i64 {
+        self.bits() as i64
+    }
+
     /// Return number of channels for this channel layout
     pub fn n_channels(&self) -> NChannels {
         unsafe { ffi::av_get_channel_layout_nb_channels(self.bits()) as NChannels }
@@ -84,10 +94,10 @@ pub type NChannels = u8;
 
 /// Multi-channels samples manipulation
 pub trait Channels {
-    type Sample: Default+Copy;
+    type Sample: Sample;
 
     /// Total number of samples per channel
-    fn len(&self) -> NSamples;
+    fn n_samples(&self) -> NSamples;
 
     /// Total number
     fn n_channels(&self) -> NChannels;
@@ -95,8 +105,27 @@ pub trait Channels {
     /// Return channel
     fn channel(&self, channel: NChannels) -> SampleSlice<Self::Sample>;
 
+    /// Get channel layout
+    fn get_layout(&self) -> ChannelLayout {
+        ChannelLayout::from_n_channels(self.n_channels()).unwrap()
+    }
+}
+
+
+pub trait ChannelsMut : Channels {
     /// Return mutable channel
     fn channel_mut(&mut self, channel: NChannels) -> SampleSliceMut<Self::Sample>;
+
+    /// Clear buffers
+    fn clear(&mut self);
+
+    /// Resize buffer for the provided channels count
+    fn resize_channels(&mut self, channels: NChannels);
+
+    /// Resize channels to handle provided channels layout
+    fn set_layout(&mut self, layout: ChannelLayout) {
+        self.resize_channels(layout.n_channels())
+    }
 
     /// Fill audio buffer with the provided value
     fn fill(&mut self, value: Self::Sample)
@@ -114,24 +143,33 @@ pub trait Channels {
         }
     }
 
+    fn copy_inplace(&mut self, b: &dyn Channels<Sample=Self::Sample>, start: usize)
+    {
+        if self.n_channels() <= b.n_channels() {
+            for i in 0..self.n_channels() {
+                copy_samples_inplace(self.channel_mut(i), &b.channel(i)[start..])
+            }
+        }
+    }
+
     /// Map buffer inplace with the provided buffer and function.
     fn zip_map_inplace(&mut self, b: &dyn Channels<Sample=Self::Sample>,
+                       start: usize,
                        func: &dyn Fn(Self::Sample, Self::Sample) -> Self::Sample)
-        where Self: Sized
     {
-        if self.n_channels() == b.n_channels() {
+        if self.n_channels() <= b.n_channels() {
             for i in 0..self.n_channels() {
-                zip_map_samples_inplace(self.channel_mut(i), b.channel(i), &func)
+                zip_map_samples_inplace(self.channel_mut(i), &b.channel(i)[start..], &func)
             }
         }
     }
 
     /// Merge with the provided Channels using simple addition.
-    fn merge_inplace(&mut self, b: &impl Channels<Sample=Self::Sample>)
+    fn merge_inplace(&mut self, b: &impl Channels<Sample=Self::Sample>, start: usize)
         where Self: Sized,
               Self::Sample: Default+Copy+Add<Output=Self::Sample>
     {
-        self.zip_map_inplace(b, &|a, b| a.add(b))
+        self.zip_map_inplace(b, start, &|a, b| a.add(b))
     }
 }
 

@@ -1,12 +1,13 @@
 /// Provides types and utilities to manipulate samples.
-use std::ops::Add;
+use std::ops::{Add,Mul};
+use std::marker::Unpin;
 
 use super::ffi;
 
 
 #[repr(i32)]
 #[derive(Copy,Clone)]
-enum SampleFmt {
+pub enum SampleFmt {
     None = ffi::AVSampleFormat_AV_SAMPLE_FMT_NONE,
     U8 = ffi::AVSampleFormat_AV_SAMPLE_FMT_U8 ,
     S16 = ffi::AVSampleFormat_AV_SAMPLE_FMT_S16,
@@ -57,10 +58,13 @@ impl IntoSampleFmt for f64 {
     fn into_sample_fmt() -> SampleFmt { SampleFmt::Dblp }
 }
 
+use std::fmt::Display;
 
 /// Generic trait for samples
-pub trait Sample: Add<Output=Self>+Copy+Default+IntoSampleFmt {
-}
+pub trait Sample: 'static+
+                  Add<Output=Self>+Mul<Output=Self>+
+                  Copy+Default+IntoSampleFmt+Unpin+Display
+{}
 
 
 impl Sample for u8 {}
@@ -77,7 +81,7 @@ pub type SampleRate = i32;
 pub type NFrames = u32;
 
 /// Number of samples in a sampleslice
-pub type NSamples = u32;
+pub type NSamples = usize;
 
 /// Slice of samples
 pub type SampleSlice<'a,T> = &'a[T];
@@ -88,15 +92,25 @@ pub type SampleSliceMut<'a,T> = &'a mut[T];
 
 /// Map frames together and update `a` with resulting values.
 // FIXME: func arg by ref or copy?
-pub fn map_samples_inplace<S: Copy>(a: SampleSliceMut<S>, func: &impl Fn(S) -> S)
+pub fn map_samples_inplace<S: Sample>(a: SampleSliceMut<S>, func: &impl Fn(S) -> S)
 {
     for s in a.iter_mut() {
         *s = func(*s);
     }
 }
 
+
 /// Zip-Map frames together and update `a` with resulting values.
-pub fn zip_map_samples_inplace<S: Copy>(a: SampleSliceMut<S>, b: SampleSlice<S>, func: &impl Fn(S, S) -> S)
+pub fn copy_samples_inplace<S: Sample>(a: SampleSliceMut<S>, b: SampleSlice<S>)
+{
+    for (s_a, s_b) in a.iter_mut().zip(b) {
+        *s_a = *s_b;
+    }
+}
+
+
+/// Zip-Map frames together and update `a` with resulting values.
+pub fn zip_map_samples_inplace<S: Sample>(a: SampleSliceMut<S>, b: SampleSlice<S>, func: &impl Fn(S, S) -> S)
 {
     for (s_a, s_b) in a.iter_mut().zip(b) {
         *s_a = func(*s_a, *s_b);
@@ -104,7 +118,7 @@ pub fn zip_map_samples_inplace<S: Copy>(a: SampleSliceMut<S>, b: SampleSlice<S>,
 }
 
 /// Samples addition between two slices and
-pub fn add_samples_inplace<S: Add<Output=S>+Copy>(a: SampleSliceMut<S>, b: SampleSlice<S>) {
+pub fn add_samples_inplace<S: Sample>(a: SampleSliceMut<S>, b: SampleSlice<S>) {
     zip_map_samples_inplace(a, b, &|a: S, b: S| a.add(b))
 }
 

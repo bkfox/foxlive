@@ -3,7 +3,7 @@ use std::iter::FromIterator;
 use jack as j;
 use smallvec::SmallVec;
 
-use crate::data::channels::{NChannels,Channels};
+use crate::data::channels::*;
 use crate::data::samples::*;
 use super::dsp::DSP;
 use super::graph::ProcessScope;
@@ -11,11 +11,11 @@ use super::graph::ProcessScope;
 
 impl ProcessScope for j::ProcessScope {
     fn n_samples(&self) -> NSamples {
-        self.n_samples() as NSamples
+        <j::ProcessScope>::n_frames(self) as NSamples
     }
 
     fn last_frame_time(&self) -> NFrames {
-        self.last_frame_time()
+        <j::ProcessScope>::last_frame_time(self)
     }
 }
 
@@ -29,7 +29,7 @@ impl DSP for JackInput {
     type Scope=j::ProcessScope;
 
     fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn Channels<Sample=Self::Sample>>,
-                     output: Option<&mut dyn Channels<Sample=Self::Sample>>)
+                     output: Option<&mut dyn ChannelsMut<Sample=Self::Sample>>)
     {
         let output = output.expect("output not provided");
         for (index, port) in self.ports.iter().enumerate() {
@@ -38,9 +38,11 @@ impl DSP for JackInput {
         }
     }
 
-    fn n_inputs(&self) -> NChannels {
+    fn n_channels(&self) -> NChannels {
         self.ports.len() as NChannels
     }
+
+    fn is_source(&self) -> bool { true }
 }
 
 
@@ -65,22 +67,27 @@ impl JackOutput {
 }
 
 
+
 impl DSP for JackOutput {
     type Sample=f32;
     type Scope=j::ProcessScope;
 
     fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn Channels<Sample=Self::Sample>>,
-                     output: Option<&mut dyn Channels<Sample=Self::Sample>>)
+                     output: Option<&mut dyn ChannelsMut<Sample=Self::Sample>>)
     {
         let input = input.expect("input not provided");
         for (index, port) in self.ports.iter_mut().enumerate() {
+            let at = scope.last_frame_time() as f32;
             let slice = port.as_mut_slice(scope);
-            add_samples_inplace(slice, input.channel(index as u8));
+            // map_samples_inplace(slice, &|s| at.sin());
+            copy_samples_inplace(slice, input.channel(index as u8));
         }
     }
 
-    fn n_outputs(&self) -> NChannels {
+    fn n_channels(&self) -> NChannels {
         self.ports.len() as NChannels
     }
+
+    fn is_sink(&self) -> bool { true }
 }
 

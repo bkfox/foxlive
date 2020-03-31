@@ -1,126 +1,107 @@
-use std::ffi::CString;
-use std::ptr::null_mut;
+//! Provide a simple interface to read and manipulate audio files.
+use std::sync::{Arc,RwLock};
 
+use crate::data::buffers::Buffers;
+use crate::data::channels::*;
+use crate::data::samples::{Sample,SampleRate};
+
+use super::futures::*;
 use super::error::Error;
-use super::ffi;
-use super::stream::{Stream,StreamId,StreamIter};
+use super::reader::{Reader,ClosureReaderHandler};
+use super::stream::StreamId;
 
 
-/// Type of the media/stream
-pub enum MediaType {
-    Audio,
-    Video,
-    Subtitle,
-    Data,
-    Metadata,
-    Unknown,
+#[repr(u8)]
+pub enum MediaState {
+    /// Media is closed
+    Closed,
+    /// Media is closed
+    Open,
+    /// Media stream are being read
+    Reading,
+    /// Media is being written
+    Writing,
+    /// Media has been fully loaded
+    Ready,
 }
 
 
-impl MediaType {
-    /// MediaType from FFMPEG's AVMediaType
-    pub fn from_av(media_type: ffi::AVMediaType) -> MediaType {
-        match media_type {
-            ffi::AVMediaType_AVMEDIA_TYPE_AUDIO => MediaType::Audio,
-            ffi::AVMediaType_AVMEDIA_TYPE_VIDEO => MediaType::Video,
-            ffi::AVMediaType_AVMEDIA_TYPE_SUBTITLE => MediaType::Subtitle,
-            ffi::AVMediaType_AVMEDIA_TYPE_DATA => MediaType::Data,
-            _ => MediaType::Unknown,
-        }
-    }
-
-    pub fn is_audio(&self) -> bool {
-        if let MediaType::Audio = self { true }
-        else { false }
-    }
-
-    pub fn is_video(&self) -> bool {
-        if let MediaType::Video = self { true }
-        else{ false }
-    }
-
-    pub fn is_subtitle(&self) -> bool {
-        if let MediaType::Subtitle = self { true }
-        else{ false }
-    }
-
-    pub fn is_data(&self) -> bool {
-        if let MediaType::Data = self { true }
-        else{ false }
-    }
-
-    pub fn is_metadata(&self) -> bool {
-        if let MediaType::Metadata = self { true }
-        else{ false }
-    }
-
-    pub fn is_unknown(&self) -> bool {
-        if let MediaType::Unknown = self { true }
-        else{ false }
-    }
+pub struct Media<S: Sample> {
+    // TODO: shared state or AtomicState?
+    pub state: Arc<RwLock<MediaState>>,
+    pub path: String,
+    pub buffers: Arc<RwLock<Buffers<S>>>,
+    n_channels: NChannels,
 }
 
 
+impl<S: Sample> Media<S> {
+    pub fn new<T: Into<String>>(path: T) -> Self {
+        Media {
+            state: Arc::new(RwLock::new(MediaState::Closed)),
+            path: path.into(),
+            buffers: Arc::new(RwLock::new(Buffers::new())),
+            n_channels: 0,
+        }
+    }
 
+    pub fn n_channels(&self) -> NChannels {
+        self.n_channels
+    }
 
-/// An interface to manipulate media files.
-///
-/// Deref to the held AVFormatContext
-pub struct Media {
-    pub format: *mut ffi::AVFormatContext,
-}
-
-impl Media {
-    /// Open input file with provided path
-    pub fn open_input(path: &str) -> Result<Self, Error> {
-        let c_path = match CString::new(path) {
-            Ok(path) => path,
-            Err(_) => return Err(Error::File("invalid path (ffi::NulError)".to_string())),
-        };
-
-        let mut format = null_mut();
-        let mut r = unsafe { ffi::avformat_open_input(&mut format, c_path.as_ptr(), null_mut(), null_mut()) };
-        if r >= 0 {
-            r = unsafe { ffi::avformat_find_stream_info(format, null_mut()) };
+    /// Read media stream, returning a future to poll in order to decode and load
+    /// it.
+    pub fn read_audio(&mut self, stream_id: Option<StreamId>, rate: SampleRate, layout: Option<ChannelLayout>) -> Result<Box<Future>,Error> {
+        let mut state = self.state.write().unwrap();
+        match *state {
+            MediaState::Closed|MediaState::Open => (),
+            _ => return Err(Error::Media("Invalid media state")),
         }
 
-        if r < 0 {
-            Err(AVError!(Format, r))
-        }
-        else {
-            Ok(Media {
-                format: format,
+        *state = MediaState::Reading;
+
+        let media_buffers = self.buffers.clone();
+        let media_state = self.state.clone();
+        let handler = ClosureReaderHandler::new(move |_, buffers: &mut Buffers<S>, poll: &mut Poll| {
+            // media has been closed/dropped
+            if let MediaState::Closed = *media_state.read().unwrap() {
+                *poll = Poll::Ready(Ok(()));
+                return;
+            }
+
+            match poll {
+                Poll::Ready(Err(_)) => {
+
+                },
+                Poll::Pending|Poll::Ready(Ok(_)) => {
+                    let mut media_buffers_lock = media_buffers.write().unwrap();
+                    let ref mut media_buffers = *media_buffers_lock;
+                    media_buffers.resize_channels(buffers.n_channels());
+
+                    for (buffer,media_buffer) in buffers.iter_mut()
+                                                        .zip(media_buffers.iter_mut()) {
+                        media_buffer.extend_from_slice(&buffer);
+                    }
+
+                    buffers.clear();
+                },
+            };
+        });
+
+        let n_channels = &mut self.n_channels;
+        Reader::open(self.path.as_str(), stream_id, rate, layout, handler)
+            .and_then(|reader| {
+                *n_channels = reader.stream().n_channels();
+                Ok(reader.boxed())
             })
-        }
-    }
-
-    /// Iterate over media's streams
-    pub fn streams(&self) -> StreamIter {
-        StreamIter::new(&self)
-    }
-
-    /// Return a Stream for the given index
-    pub fn stream<'a>(&'a self, id: StreamId) -> Option<Stream<'a>> {
-        let format = unsafe { self.format.as_ref().unwrap() };
-        if id >= format.nb_streams as i32 {
-            return None
-        }
-
-        let streams = format.streams;
-        Some(unsafe { Stream::new(*streams.offset(id as isize)) })
     }
 }
 
-
-impl Drop for Media {
+impl<S: Sample> Drop for Media<S> {
     fn drop(&mut self) {
-        if !self.format.is_null() {
-            unsafe { ffi::avformat_close_input(&mut self.format); }
-            self.format = null_mut();
-        }
+        let mut state = self.state.write().unwrap();
+        *state = MediaState::Closed;
     }
 }
-
-
 
 

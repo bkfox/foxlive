@@ -2,111 +2,73 @@ use std::sync::{Arc,RwLock};
 
 use smallvec::SmallVec;
 
-use super::channels::NChannels;
+use super::channels::*;
+use super::samples::*;
 
 
 /// Continguous samples buffer
-pub type Buffer<S> = Vec<S>;
+pub type Buffer<S: Sample> = Vec<S>;
 
 /// Container of multiple audio buffers
-pub type Buffers<S> = SmallVec<[Buffer<S>; 2]>;
+pub type Buffers<S: Sample> = SmallVec<[Buffer<S>; 5]>;
 
 /// Container of multiple buffer slices
-pub type Slices<'a,S> = SmallVec<[&'a mut [S]; 2]>;
-
-/// Multi-owner shared buffers
-pub type SharedBuffers<S> = Arc<RwLock<Buffers<S>>>;
+pub type BuffersSlices<'a,S: Sample> = SmallVec<[&'a mut [S]; 5]>;
 
 
-/// Used to write data into a cache before flushing it into a shared Buffers.
-/// This avoid to much lock on the shared buffer.
-///
-/// Flushing is done only when the cache reaches its reserved capacity
-/// (or is forced to flush)
-pub struct PreBuffer<S>
-    where S: Copy+Clone
-{
-    pub caches: Buffers<S>,
-    pub buffers: SharedBuffers<S>,
+impl<S: Sample> Channels for Buffers<S> {
+    type Sample = S;
+
+    fn n_samples(&self) -> NSamples {
+        if self.len() > 0 {
+            self[0].len()
+        }
+        else { 0 }
+    }
+
+    fn n_channels(&self) -> NChannels {
+        self.len() as NChannels
+    }
+
+    fn channel(&self, channel: NChannels) -> SampleSlice<Self::Sample> {
+        &self[channel as usize][..]
+    }
 }
 
-impl<S> PreBuffer<S>
-    where S: Copy+Default
-{
-    // TODO: channels: usize -> NChannels
-    pub fn new(channels: NChannels, buffers: Arc<RwLock<Buffers<S>>>) -> PreBuffer<S>
-    {
-        let mut caches = Buffers::with_capacity(channels as usize);
+impl<S: Sample> ChannelsMut for Buffers<S> {
+    fn channel_mut(&mut self, channel: NChannels) -> SampleSliceMut<Self::Sample> {
+        &mut self[channel as usize][..]
+    }
 
-        // set up caches & buffers -- try to avoid reallocation
-        // whenever possible
-        {
-            let ref mut buffers = *buffers.write().unwrap();
-
-            // avoid reallocate contained vecs
-            if buffers.len() > channels as usize {
-                buffers.truncate(channels as usize);
-            }
-            else {
-                buffers.reserve(channels as usize);
-            }
-
-            for i in 0..channels {
-                caches.push(Buffer::new());
-                if buffers.len() <= i as usize {
-                    buffers.push(Buffer::new());
-                }
-            }
-        }
-
-        PreBuffer {
-            caches: caches,
-            buffers: buffers,
+    fn clear(&mut self) {
+        for channel in self.iter_mut() {
+            channel.clear();
         }
     }
 
-    pub fn channels(&self) -> NChannels {
-        self.caches.len() as NChannels
-    }
-
-    /// Reserve this amount of data for buffers
-    pub fn reserve_buffers(&mut self, size: usize) {
-        let mut buffers = self.buffers.write().unwrap();
-        for mut buffer in buffers.iter_mut() {
-            buffer.reserve(size);
-        }
-    }
-
-    /// Reserve this amount of sample for caches
-    pub fn reserve_caches(&mut self, size: usize) {
-        for mut cache in self.caches.iter_mut() {
-            cache.reserve(size);
-        }
-    }
-
-    /// Reserve this amount of data for caches
-    pub fn resize_caches(&mut self, size: usize) {
-        for mut cache in self.caches.iter_mut() {
-            cache.resize(size, S::default());
-        }
-    }
-
-    /// Flush caches into buffers
-    pub fn flush(&mut self, force: bool) -> bool {
-        if !force && self.caches[0].len() == self.caches[0].capacity()
-        {
-            return false
-        }
-
-        let mut buffers = self.buffers.write().unwrap();
-        for (i, buffer) in buffers.iter_mut().enumerate() {
-            buffer.extend(self.caches[i].iter());
-            self.caches[i].clear();
-        }
-        true
+    fn resize_channels(&mut self, channels: NChannels) {
+        self.resize(channels as usize, Buffer::with_capacity(self.len()));
     }
 }
 
 
+impl<'a,S: Sample> Channels for BuffersSlices<'a,S> {
+    type Sample = S;
+
+    fn n_samples(&self) -> NSamples {
+        if self.len() > 0 {
+            self[0].len()
+        }
+        else { 0 }
+    }
+
+    fn n_channels(&self) -> NChannels {
+        self.len() as NChannels
+    }
+
+    fn channel(&self, channel: NChannels) -> SampleSlice<Self::Sample> {
+        &self[channel as usize][..]
+    }
+}
 
 

@@ -1,12 +1,10 @@
-use std::ops::Add;
-
 use super::samples::*;
-use super::channels::{NChannels,Channels};
+use super::channels::*;
 
 
 /// Provide buffer for multiple channels where frames are stored in
 /// continguous memory.
-pub struct ChannelsBuffer<S: Default+Copy+Add<Output=S>> {
+pub struct ChannelsBuffer<S: Sample> {
     // size of a frame
     n_samples: NSamples,
     // channels count
@@ -15,7 +13,7 @@ pub struct ChannelsBuffer<S: Default+Copy+Add<Output=S>> {
     samples: Vec<S>,
 }
 
-impl<S: Default+Copy+Add<Output=S>> ChannelsBuffer<S>
+impl<S: Sample> ChannelsBuffer<S>
 {
     pub fn new() -> ChannelsBuffer<S> {
         ChannelsBuffer::with_capacity(0, 0)
@@ -38,28 +36,18 @@ impl<S: Default+Copy+Add<Output=S>> ChannelsBuffer<S>
     }
 
     /// Resize frame. It invalidates buffers' content.
-    pub fn resize_frame(&mut self, n_samples: NSamples) -> NSamples {
+    pub fn resize_frame(&mut self, n_samples: NSamples) {
         if self.n_samples != n_samples {
             self.resize(self.n_channels, n_samples);
         }
-        self.n_samples
-    }
-
-    /// Resize buffer for the given channels count. It invalidates buffer's
-    /// content.
-    pub fn resize_channels(&mut self, n_channels: NChannels) -> NChannels {
-        if self.n_channels != n_channels {
-            self.resize(n_channels, self.n_samples);
-        }
-        self.n_channels
     }
 }
 
 
-impl<S: Default+Copy+Add<Output=S>> Channels for ChannelsBuffer<S> {
+impl<S: Sample> Channels for ChannelsBuffer<S> {
     type Sample = S;
 
-    fn len(&self) -> NSamples {
+    fn n_samples(&self) -> NSamples {
         self.n_samples
     }
 
@@ -71,10 +59,24 @@ impl<S: Default+Copy+Add<Output=S>> Channels for ChannelsBuffer<S> {
         let start = (channel as usize) * (self.n_samples as usize);
         &self.samples[start..(start + (self.n_samples as usize))]
     }
+}
 
+impl<S: Sample> ChannelsMut for ChannelsBuffer<S> {
     fn channel_mut<'a>(&'a mut self, channel: NChannels) -> SampleSliceMut<'a,S> {
         let start = (channel as usize) * (self.n_samples as usize);
         &mut self.samples[start..(start + (self.n_samples as usize))]
+    }
+
+    fn clear(&mut self) {
+        self.resize_frame(0);
+    }
+
+    /// Resize buffer for the given channels count. It invalidates buffer's
+    /// content.
+    fn resize_channels(&mut self, n_channels: NChannels) {
+        if self.n_channels != n_channels {
+            self.resize(n_channels, self.n_samples);
+        }
     }
 
     /*pub fn frames(&self) -> Chunks<T> {

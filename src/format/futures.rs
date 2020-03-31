@@ -1,25 +1,28 @@
 use futures;
-use nix::errno::Errno;
+use std::marker::Unpin;
 
 use super::error::Error;
 
 
-pub type Poll = futures::task::Poll<Result<(), Error>>;
+pub type PollValue = Result<(), Error>;
+pub type Poll = futures::task::Poll<PollValue>;
+pub type Future = dyn futures::Future<Output=PollValue>+Unpin;
 
 
 /// Return a Poll<Result<(), Error>> from provided ffmpeg function result
 macro_rules! ToPoll {
     ($err:ident, $r: ident) => {{
+        use libc::{EDOM,EAGAIN};
+
         // EOF
         if $r == -541478725 {
             return Poll::Ready(Ok(()));
         }
 
         // cf. AVERROR macros definitions
-        let err = Errno::from_i32(if Errno::EDOM as i32 > 0 { -$r }
-                                  else { $r });
+        let err = if EDOM as i32 > 0 { -$r } else { $r };
         match err {
-            Errno::EAGAIN => Poll::Pending,
+            EAGAIN => Poll::Pending,
             _ => Poll::Ready(Err(AVError!($err, $r))),
         }
     }}

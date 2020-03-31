@@ -4,8 +4,8 @@ use std::marker::PhantomData;
 use smallvec::SmallVec;
 
 
-use crate::data::buffers::{Buffers,Buffer};
-use crate::data::channels::ChannelLayout;
+use crate::data::buffers::Buffers;
+use crate::data::channels::*;
 use crate::data::samples::{Sample,SampleRate};
 
 use super::ffi;
@@ -25,17 +25,21 @@ pub struct Resampler<S: Sample> {
 
 impl<S: Sample> Resampler<S> {
     pub fn new(context: &CodecContext, sample_rate: SampleRate,
-               channel_layout: ChannelLayout)
+               layout: Option<ChannelLayout>)
         -> Result<Resampler<S>,Error>
     {
+        let layout = layout.unwrap_or(context.channel_layout());
         unsafe {
-            println!("Resampler with {}, codec {}", sample_rate, context.sample_rate);
             let swr = ffi::swr_alloc_set_opts(null_mut(),
-                channel_layout.bits() as i64, S::into_sample_ffi(), sample_rate,
-                context.channel_layout as i64, context.sample_fmt, context.sample_rate,
+                layout.signed(), S::into_sample_ffi(), sample_rate,
+                context.channel_layout().signed(), context.sample_fmt, context.sample_rate,
                 0, null_mut()
             );
 
+            let mut out_bufs = SmallVec::new();
+            for i in 0..layout.n_channels() {
+                out_bufs.push(null_mut());
+            }
 
             match ffi::swr_init(swr) {
                 r if r < 0 => Err(AVError!(Resampler, r)),
@@ -43,7 +47,7 @@ impl<S: Sample> Resampler<S> {
                     swr: swr,
                     src_rate: context.sample_rate,
                     dst_rate: sample_rate,
-                    out_bufs: SmallVec::with_capacity(channel_layout.n_channels() as usize),
+                    out_bufs: out_bufs,
                     phantom: PhantomData,
                 })
             }
@@ -62,20 +66,15 @@ impl<S: Sample> Resampler<S> {
             ffi::AVRounding_AV_ROUND_UP
         )};
 
-        // clear pointer to output buffers
-        self.out_bufs.clear();
-
-        // FIXME: bottleneck
+        // FIXME: bottleneck?
         // ensure output buffers have the right number of channels
-        out.resize(self.out_bufs.capacity() as usize,
-                   Buffer::with_capacity(dst_nb_samples as usize));
+        out.resize_channels(self.out_bufs.len() as NChannels);
 
-        for i in 0..self.out_bufs.capacity() {
+        for i in 0..self.out_bufs.len() {
             let ref mut buffer = &mut out[i];
             let n = buffer.len();
             buffer.resize(n + dst_nb_samples as usize, S::default());
-            let offset = unsafe { buffer.as_mut_ptr().offset(n as isize) };
-            self.out_bufs.push(offset as *mut u8);
+            self.out_bufs[i] = unsafe { buffer.as_mut_ptr().offset(n as isize) as *mut u8 };
         }
 
         // convert

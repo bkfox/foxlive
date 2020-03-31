@@ -6,12 +6,12 @@ use petgraph::stable_graph as sg;
 
 use crate::data::channels_buffer::ChannelsBuffer;
 use crate::data::channels::*;
-use crate::data::samples::{NSamples, NFrames};
+use crate::data::samples::{Sample,NSamples, NFrames};
 use super::dsp::{DSP,BoxedDSP};
 
 
 /// Scope passed to graph objects when processing audio
-pub trait ProcessScope {
+pub trait ProcessScope : 'static {
     fn n_samples(&self) -> NSamples;
     fn last_frame_time(&self) -> NFrames;
 }
@@ -19,7 +19,7 @@ pub trait ProcessScope {
 
 /// Graph node
 pub struct Unit<S,PS>
-    where S: Default+Copy+Add<Output=S>,
+    where S: Sample,
           PS: ProcessScope
 {
     buffer: ChannelsBuffer<S>,
@@ -29,15 +29,15 @@ pub struct Unit<S,PS>
 }
 
 impl<S,PS> Unit<S,PS>
-    where S: Default+Copy+Add<Output=S>,
+    where S: Sample,
           PS: ProcessScope
 {
     fn new<D>(dsp: D) -> Unit<S,PS>
         where D: 'static+DSP<Sample=S,Scope=PS>
     {
-        let n_outputs = dsp.n_outputs();
+        let n_channels = dsp.n_channels();
         Unit {
-            buffer: ChannelsBuffer::with_capacity(n_outputs, 1024),
+            buffer: ChannelsBuffer::with_capacity(n_channels, 1024),
             last_frame_time: 0,
             processing: AtomicBool::new(false),
             dsp: Box::new(dsp),
@@ -45,7 +45,7 @@ impl<S,PS> Unit<S,PS>
     }
 
     fn process_audio(&mut self, scope: &PS, input: Option<&dyn Channels<Sample=S>>) {
-        self.buffer.resize_frame(scope.n_samples());
+        self.buffer.resize(self.dsp.n_channels(), scope.n_samples());
         self.dsp.process_audio(scope, input, Some(&mut self.buffer));
     }
 
@@ -57,7 +57,7 @@ impl<S,PS> Unit<S,PS>
 
 
 impl<S,PS> Deref for Unit<S,PS>
-    where S: Default+Copy+Add<Output=S>,
+    where S: Sample,
           PS: ProcessScope
 {
     type Target = dyn DSP<Sample=S,Scope=PS>;
@@ -75,7 +75,7 @@ pub type Dag<S,PS> = sg::StableGraph<Unit<S,PS>, (), pg::Directed, Ix>;
 
 
 pub struct Graph<S,PS>
-    where S: Default+Copy+Add<Output=S>,
+    where S: Sample,
           PS: ProcessScope
 {
     dag: Dag<S,PS>,
@@ -85,17 +85,18 @@ pub struct Graph<S,PS>
 
 
 unsafe impl<S,PS> Sync for Graph<S,PS>
-    where S: Default+Copy+Add<Output=S>,
+    where S: Sample,
           PS: ProcessScope
 {}
+
 unsafe impl<S,PS> Send for Graph<S,PS>
-    where S: Default+Copy+Add<Output=S>,
+    where S: Sample,
           PS: ProcessScope
 {}
 
 
 impl<S,PS> Graph<S,PS>
-    where S: Default+Copy+Add<Output=S>,
+    where S: Sample,
           PS: ProcessScope
 {
     /// Create a new empty `Graph`.
@@ -199,7 +200,7 @@ impl<S,PS> Graph<S,PS>
                 // Filters and sink
                 else {
                     let buffer = &mut self.dry_buffer;
-                    buffer.resize(node.n_outputs(), scope.n_samples());
+                    buffer.resize(node.n_channels(), scope.n_samples());
                     buffer.fill(S::default());
 
                     // gather input buffers
@@ -207,7 +208,7 @@ impl<S,PS> Graph<S,PS>
                     for input in inputs {
                         // take input if not removed
                         if let Some(input) = self.dag.node_weight(input) {
-                            buffer.merge_inplace(&input.buffer);
+                            buffer.merge_inplace(&input.buffer, 0);
                         }
                     }
 
@@ -224,7 +225,7 @@ impl<S,PS> Graph<S,PS>
     }
 
     /// Notify graph that it has been updated after changes have been made.
-    fn updated(&mut self) {
+    pub fn updated(&mut self) {
         self.ordered_nodes = pg::algo::toposort(&self.dag, None)
                                  .expect("cycles are not allowed");
     }

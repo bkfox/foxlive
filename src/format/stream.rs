@@ -2,17 +2,76 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 
 use super::ffi;
-use super::media::{Media,MediaType};
+use super::format::FormatContext;
+use crate::data::channels::NChannels;
+
+
+/// Type of the stream
+pub enum MediaType {
+    Audio,
+    Video,
+    Subtitle,
+    Data,
+    Metadata,
+    Unknown,
+}
+
+
+impl MediaType {
+    /// MediaType from FFMPEG's AVMediaType
+    pub fn from_av(media_type: ffi::AVMediaType) -> MediaType {
+        match media_type {
+            ffi::AVMediaType_AVMEDIA_TYPE_AUDIO => MediaType::Audio,
+            ffi::AVMediaType_AVMEDIA_TYPE_VIDEO => MediaType::Video,
+            ffi::AVMediaType_AVMEDIA_TYPE_SUBTITLE => MediaType::Subtitle,
+            ffi::AVMediaType_AVMEDIA_TYPE_DATA => MediaType::Data,
+            _ => MediaType::Unknown,
+        }
+    }
+
+    pub fn is_audio(&self) -> bool {
+        if let MediaType::Audio = self { true }
+        else { false }
+    }
+
+    pub fn is_video(&self) -> bool {
+        if let MediaType::Video = self { true }
+        else{ false }
+    }
+
+    pub fn is_subtitle(&self) -> bool {
+        if let MediaType::Subtitle = self { true }
+        else{ false }
+    }
+
+    pub fn is_data(&self) -> bool {
+        if let MediaType::Data = self { true }
+        else{ false }
+    }
+
+    pub fn is_metadata(&self) -> bool {
+        if let MediaType::Metadata = self { true }
+        else{ false }
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        if let MediaType::Unknown = self { true }
+        else{ false }
+    }
+}
+
+
+
 
 
 /// Stream index
 pub type StreamId = i32;
 
 
-/// Wrapper around AVStream
+/// Wrapper around AVStream.
 pub struct Stream<'a> {
     stream: *mut ffi::AVStream,
-    phantom: PhantomData<&'a Media>,
+    phantom: PhantomData<&'a FormatContext>,
 }
 
 
@@ -39,6 +98,10 @@ impl<'a> Stream<'a> {
         MediaType::from_av(self.codecpar().codec_type)
     }
 
+    pub fn n_channels(&self) -> NChannels {
+        self.codecpar().channels as NChannels
+    }
+
     // TODO:
     // - channel_layout
     // - n_channels
@@ -57,14 +120,14 @@ impl<'a> Deref for Stream<'a> {
 /// Iterator over a `Media`'s streams
 pub struct StreamIter<'a> {
     id: StreamId,
-    media: &'a Media
+    format: &'a FormatContext
 }
 
 impl<'a> StreamIter<'a> {
-    pub fn new(media: &Media) -> StreamIter {
+    pub fn new(format: &FormatContext) -> StreamIter {
         StreamIter {
             id: 0,
-            media: media
+            format: format,
         }
     }
 }
@@ -73,11 +136,9 @@ impl<'a> Iterator for StreamIter<'a> {
     type Item = Stream<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let stream = self.media.stream(self.id);
+        let stream = self.format.stream(self.id);
         self.id += 1;
         stream
     }
 }
-
-
 

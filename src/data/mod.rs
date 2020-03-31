@@ -1,5 +1,5 @@
 
-/// Exposes FFMPEG FFI for internal purposes
+#[allow(warnings)]
 pub mod ffi;
 
 pub mod buffers;

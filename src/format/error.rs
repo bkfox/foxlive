@@ -5,10 +5,10 @@ use super::ffi;
 #[derive(Debug)]
 #[repr(u8)]
 pub enum ErrorCode {
-    File,
+    Media,
     Format,
     Codec,
-    Decoder,
+    Reader,
     Resampler,
     Generic,
 }
@@ -22,12 +22,29 @@ pub struct Error {
 
 
 impl Error {
-    pub fn File(msg: String) -> Error { Error { code: ErrorCode::File, msg: msg } }
-    pub fn Format(msg: String) -> Error { Error { code: ErrorCode::Format, msg: msg } }
-    pub fn Codec(msg: String) -> Error { Error { code: ErrorCode::Codec, msg: msg } }
-    pub fn Decoder(msg: String) -> Error { Error { code: ErrorCode::Decoder, msg: msg } }
-    pub fn Resampler(msg: String) -> Error { Error { code: ErrorCode::Resampler, msg: msg } }
-    pub fn Generic(msg: String) -> Error { Error { code: ErrorCode::Generic, msg: msg } }
+    pub fn Media<T: Into<String>>(msg: T) -> Error {
+        Error { code: ErrorCode::Media, msg: msg.into() }
+    }
+
+    pub fn Format<T: Into<String>>(msg: T) -> Error {
+        Error { code: ErrorCode::Format, msg: msg.into() }
+    }
+
+    pub fn Codec<T: Into<String>>(msg: T) -> Error {
+        Error { code: ErrorCode::Codec, msg: msg.into() }
+    }
+
+    pub fn Reader<T: Into<String>>(msg: T) -> Error {
+        Error { code: ErrorCode::Reader, msg: msg.into() }
+    }
+
+    pub fn Resampler<T: Into<String>>(msg: T) -> Error {
+        Error { code: ErrorCode::Resampler, msg: msg.into() }
+    }
+
+    pub fn Generic<T: Into<String>>(msg: T) -> Error {
+        Error { code: ErrorCode::Generic, msg: msg.into() }
+    }
 }
 
 /// [av_strerror] Return a msg of the ffmpeg error code
