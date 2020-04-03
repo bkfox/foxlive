@@ -1,4 +1,5 @@
-use std::ops::{Add,Deref};
+use std::ops::Deref;
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool,Ordering};
 
 use petgraph as pg;
@@ -7,6 +8,8 @@ use petgraph::stable_graph as sg;
 use crate::data::channels_buffer::ChannelsBuffer;
 use crate::data::channels::*;
 use crate::data::samples::{Sample,NSamples, NFrames};
+
+use super::controller::*;
 use super::dsp::{DSP,BoxedDSP};
 
 
@@ -22,10 +25,16 @@ pub struct Unit<S,PS>
     where S: Sample,
           PS: ProcessScope
 {
-    buffer: ChannelsBuffer<S>,
-    last_frame_time: NFrames,
-    processing: AtomicBool,
-    dsp: BoxedDSP<S, PS>,
+    /// Rendered buffer
+    pub buffer: ChannelsBuffer<S>,
+    /// Last buffer update time
+    pub last_frame_time: NFrames,
+    /// Unit is being processing some audio
+    pub processing: AtomicBool,
+    /// Contained dsp
+    pub dsp: BoxedDSP<S, PS>,
+    /// Wether controls have been mapped
+    mapped: bool,
 }
 
 impl<S,PS> Unit<S,PS>
@@ -41,6 +50,7 @@ impl<S,PS> Unit<S,PS>
             last_frame_time: 0,
             processing: AtomicBool::new(false),
             dsp: Box::new(dsp),
+            mapped: false,
         }
     }
 
@@ -81,6 +91,7 @@ pub struct Graph<S,PS>
     dag: Dag<S,PS>,
     ordered_nodes: Vec<NodeIndex>,
     dry_buffer: ChannelsBuffer<S>,
+    controls: BTreeMap<ControlIndex, (NodeIndex,ControlMap)>,
 }
 
 
@@ -110,6 +121,7 @@ impl<S,PS> Graph<S,PS>
             dag: Dag::with_capacity(nodes, edges),
             ordered_nodes: Vec::with_capacity(nodes),
             dry_buffer: ChannelsBuffer::with_capacity(2, 1024),
+            controls: BTreeMap::new(),
         }
     }
 
@@ -229,5 +241,68 @@ impl<S,PS> Graph<S,PS>
         self.ordered_nodes = pg::algo::toposort(&self.dag, None)
                                  .expect("cycles are not allowed");
     }
+
+    /// Map controls for a provided node
+    fn map_node_controls(&mut self, node_index: NodeIndex, node: &mut Unit<S,PS>) {
+        let mut mapper = GraphControlsMapper {
+            controls: &mut self.controls,
+            node: node_index,
+        };
+        node.dsp.map_controls(&mut mapper);
+        node.mapped = true;
+    }
 }
+
+
+impl<S,PS> Controller for Graph<S,PS>
+    where S: Sample,
+          PS: ProcessScope
+{
+    fn get_metadata(&mut self) -> Metadatas {
+        vec!((String::from("name"), String::from("graph")))
+    }
+
+    fn get_control(&self, control: ControlIndex) -> Option<ControlValue> {
+        self.controls.get(&control).and_then(|(node, map)| self.node(*node))
+                                   .and_then(|node| node.get_control(control))
+    }
+
+    fn set_control(&mut self, control: ControlIndex, value: ControlValue) -> Result<ControlValue, ()> {
+        if let Some((node, _)) = self.controls.get(&control) {
+            if let Some(node) = self.dag.node_weight_mut(*node) {
+                return node.dsp.set_control(control, value);
+            }
+        }
+        Err(())
+    }
+
+    fn map_controls(&self, mapper: &mut dyn ControlsMapper) {
+        for (control, (node, map)) in self.controls.iter() {
+            mapper.declare(*control, map.control_type, map.metadata.clone());
+        }
+    }
+}
+
+
+pub struct GraphControlsMapper<'a>
+{
+    controls: &'a mut BTreeMap<ControlIndex,(NodeIndex,ControlMap)>,
+    node: NodeIndex,
+}
+
+
+impl<'a> ControlsMapper for GraphControlsMapper<'a> {
+    fn declare(&mut self, control: ControlIndex, control_type: ControlType,
+               metadata: Metadatas)
+    {
+        self.controls.insert(self.controls.len() as ControlIndex, (self.node, ControlMap {
+            control: control,
+            control_type: control_type,
+            metadata: Vec::from(metadata),
+        }));
+    }
+}
+
+
+
 

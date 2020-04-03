@@ -119,16 +119,13 @@ impl<'a> Deref for Stream<'a> {
 
 /// Iterator over a `Media`'s streams
 pub struct StreamIter<'a> {
+    format: &'a FormatContext,
     id: StreamId,
-    format: &'a FormatContext
 }
 
 impl<'a> StreamIter<'a> {
-    pub fn new(format: &FormatContext) -> StreamIter {
-        StreamIter {
-            id: 0,
-            format: format,
-        }
+    pub fn new(format: &'a FormatContext) -> Self {
+        Self { format: format, id: 0, }
     }
 }
 

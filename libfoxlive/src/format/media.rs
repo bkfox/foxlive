@@ -55,7 +55,7 @@ impl<S: Sample> Media<S> {
         let mut state = self.state.write().unwrap();
         match *state {
             MediaState::Closed|MediaState::Open => (),
-            _ => return Err(Error::Media("Invalid media state")),
+            _ => return Err(Error::media("Invalid media state")),
         }
 
         *state = MediaState::Reading;

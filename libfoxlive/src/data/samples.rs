@@ -28,8 +28,7 @@ impl SampleFmt {
     }
 }
 
-
-/// Sample to SampleFmt
+/// Sample to SampleFmt conversion
 pub trait IntoSampleFmt {
     fn into_sample_fmt() -> SampleFmt { SampleFmt::None }
 

@@ -46,6 +46,8 @@ use std::iter::FromIterator;
 use jack as j;
 use smallvec::SmallVec;
 
+use crate as libfoxlive;
+use libfoxlive_derive::foxlive_controller;
 use crate::data::channels::*;
 use crate::data::samples::*;
 use super::dsp::DSP;
@@ -63,6 +65,7 @@ impl ProcessScope for j::ProcessScope {
 }
 
 
+#[foxlive_controller("jack_input")]
 pub struct JackInput {
     ports: SmallVec<[j::Port<j::AudioIn>; 2]>
 }
@@ -71,7 +74,7 @@ impl DSP for JackInput {
     type Sample=f32;
     type Scope=j::ProcessScope;
 
-    fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn Channels<Sample=Self::Sample>>,
+    fn process_audio(&mut self, scope: &Self::Scope, _input: Option<&dyn Channels<Sample=Self::Sample>>,
                      output: Option<&mut dyn ChannelsMut<Sample=Self::Sample>>)
     {
         let output = output.expect("output not provided");
@@ -89,7 +92,7 @@ impl DSP for JackInput {
 }
 
 
-
+#[foxlive_controller("jack_output")]
 pub struct JackOutput {
     ports: SmallVec<[j::Port<j::AudioOut>; 2]>
 }
@@ -116,11 +119,10 @@ impl DSP for JackOutput {
     type Scope=j::ProcessScope;
 
     fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn Channels<Sample=Self::Sample>>,
-                     output: Option<&mut dyn ChannelsMut<Sample=Self::Sample>>)
+                     _output: Option<&mut dyn ChannelsMut<Sample=Self::Sample>>)
     {
         let input = input.expect("input not provided");
         for (index, port) in self.ports.iter_mut().enumerate() {
-            let at = scope.last_frame_time() as f32;
             let slice = port.as_mut_slice(scope);
             // map_samples_inplace(slice, &|s| at.sin());
             copy_samples_inplace(slice, input.channel(index as u8));

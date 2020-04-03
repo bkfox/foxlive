@@ -48,5 +48,7 @@
 //: use fn swr_get_delay
 //: use fn swr_init
 //
+//: use type AVDictionaryEntry
+//: use fn av_dict_get
 
 

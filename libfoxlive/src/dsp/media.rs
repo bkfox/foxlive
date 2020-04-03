@@ -1,28 +1,34 @@
 use std::ops::Deref;
 use std::marker::PhantomData;
 
+use crate as libfoxlive;
+use libfoxlive_derive::foxlive_controller;
 use crate::data::channels::*;
 use crate::data::samples::*;
 use crate::format::media::*;
-use super::graph::ProcessScope;
-use super::dsp::DSP;
 
+use super::controller::*;
+use super::dsp::DSP;
+use super::graph::ProcessScope;
 
 
 /// View over a media
+#[foxlive_controller("media")]
 pub struct MediaView<S,PS,M>
-    where S: Sample,
+    where S: Sample+IntoControlValue,
           PS: ProcessScope,
           M: 'static+Deref<Target=Media<S>>
 {
     pub media: M,
+    #[control(Index, "position")]
     pub pos: usize,
+    #[control(F32(1.0,1.0,0.1), "ampl")]
     pub amp: S,
     phantom: PhantomData<PS>,
 }
 
 impl<S,PS,M> MediaView<S,PS,M>
-    where S: Sample,
+    where S: Sample+IntoControlValue,
           PS: ProcessScope,
           M: 'static+Deref<Target=Media<S>>
 {
@@ -38,14 +44,14 @@ impl<S,PS,M> MediaView<S,PS,M>
 
 
 impl<S,PS,M> DSP for MediaView<S,PS,M>
-    where S: Sample,
+    where S: Sample+IntoControlValue,
           PS: ProcessScope,
           M: 'static+Deref<Target=Media<S>>
 {
     type Sample = S;
     type Scope = PS;
 
-    fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn Channels<Sample=Self::Sample>>,
+    fn process_audio(&mut self, scope: &Self::Scope, _input: Option<&dyn Channels<Sample=Self::Sample>>,
                      output: Option<&mut dyn ChannelsMut<Sample=Self::Sample>>)
     {
         let output = output.unwrap();

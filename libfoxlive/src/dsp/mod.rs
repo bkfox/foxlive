@@ -1,13 +1,12 @@
 
 pub mod dsp;
+pub mod controller;
 pub mod graph;
 
-// backends
-pub mod jack;
-
-// core dsp
 pub mod closure;
+pub mod jack;
 pub mod media;
+
 
 pub use dsp::{DSP,BoxedDSP};
 pub use graph::Graph;

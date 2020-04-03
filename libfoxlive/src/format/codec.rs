@@ -78,9 +78,9 @@ impl CodecContext {
 
 impl Drop for CodecContext {
     fn drop(&mut self) {
-        /*if !self.context.is_null() {
+        /* if !self.context.is_null() {
             unsafe { ffi::avcodec_free_context(&mut self.context); }
-        }*/
+        } */
     }
 }
 

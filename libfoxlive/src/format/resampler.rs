@@ -37,7 +37,7 @@ impl<S: Sample> Resampler<S> {
             );
 
             let mut out_bufs = SmallVec::new();
-            for i in 0..layout.n_channels() {
+            for _i in 0..layout.n_channels() {
                 out_bufs.push(null_mut());
             }
 

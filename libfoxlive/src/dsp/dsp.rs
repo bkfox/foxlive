@@ -3,10 +3,11 @@ use std::any::Any;
 use crate::data::channels::*;
 use crate::data::samples::Sample;
 use super::graph::ProcessScope;
+use super::controller::Controller;
 
 
 /// Generic DSP trait in order to process audio from graph.
-pub trait DSP: Any {
+pub trait DSP: Any+Controller {
     type Sample: Sample;
     type Scope: ProcessScope;
 

@@ -1,5 +1,5 @@
-use std::ffi::CString;
-use std::ptr::null_mut;
+use std::ffi::{CStr, CString};
+use std::ptr::{null_mut,null};
 
 use super::error::Error;
 use super::ffi;
@@ -18,7 +18,7 @@ impl FormatContext {
     pub fn open_input(path: &str) -> Result<Self, Error> {
         let c_path = match CString::new(path) {
             Ok(path) => path,
-            Err(_) => return Err(Error::Format("invalid path (ffi::NulError)".to_string())),
+            Err(_) => return Err(Error::format("invalid path (ffi::NulError)".to_string())),
         };
 
         let mut context = null_mut();
@@ -41,7 +41,7 @@ impl FormatContext {
     }
 
     /// Return a Stream for the given index
-    pub fn stream<'a>(&'a self, id: StreamId) -> Option<Stream<'a>> {
+    pub fn stream(&self, id: StreamId) -> Option<Stream> {
         let context = unsafe { &*self.context };
         if id >= context.nb_streams as i32 {
             return None
@@ -49,6 +49,11 @@ impl FormatContext {
 
         let streams = context.streams;
         Some(unsafe { Stream::new(*streams.offset(id as isize)) })
+    }
+
+    /// Return iterator over metadata
+    pub fn metadata(&self) -> MetadataIter {
+        MetadataIter::new(self)
     }
 }
 
@@ -63,5 +68,32 @@ impl Drop for FormatContext {
 }
 
 
+/// Iterator over a format's metadata.
+pub struct MetadataIter<'a> {
+    format: &'a FormatContext,
+    entry: *const ffi::AVDictionaryEntry,
+}
 
+impl<'a> MetadataIter<'a> {
+    pub fn new(format: &'a FormatContext) -> Self {
+        Self { format: format, entry: null() }
+    }
+}
+
+impl<'a> Iterator for MetadataIter<'a> {
+    type Item = (&'a str, &'a str);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.entry = unsafe { ffi::av_dict_get((*self.format.context).metadata,
+                                               CString::new("").unwrap().as_ptr(), self.entry, 2) };
+        if self.entry.is_null() { None }
+        else {
+            // FIXME: CStr::from_ptr will return an error when metadata are not UTF8 valid
+            unsafe {
+                Some((CStr::from_ptr((*self.entry).key).to_str().unwrap(),
+                      CStr::from_ptr((*self.entry).value).to_str().unwrap()))
+            }
+        }
+    }
+}
 

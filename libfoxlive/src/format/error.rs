@@ -22,27 +22,27 @@ pub struct Error {
 
 
 impl Error {
-    pub fn Media<T: Into<String>>(msg: T) -> Error {
+    pub fn media<T: Into<String>>(msg: T) -> Error {
         Error { code: ErrorCode::Media, msg: msg.into() }
     }
 
-    pub fn Format<T: Into<String>>(msg: T) -> Error {
+    pub fn format<T: Into<String>>(msg: T) -> Error {
         Error { code: ErrorCode::Format, msg: msg.into() }
     }
 
-    pub fn Codec<T: Into<String>>(msg: T) -> Error {
+    pub fn codec<T: Into<String>>(msg: T) -> Error {
         Error { code: ErrorCode::Codec, msg: msg.into() }
     }
 
-    pub fn Reader<T: Into<String>>(msg: T) -> Error {
+    pub fn reader<T: Into<String>>(msg: T) -> Error {
         Error { code: ErrorCode::Reader, msg: msg.into() }
     }
 
-    pub fn Resampler<T: Into<String>>(msg: T) -> Error {
+    pub fn resampler<T: Into<String>>(msg: T) -> Error {
         Error { code: ErrorCode::Resampler, msg: msg.into() }
     }
 
-    pub fn Generic<T: Into<String>>(msg: T) -> Error {
+    pub fn generic<T: Into<String>>(msg: T) -> Error {
         Error { code: ErrorCode::Generic, msg: msg.into() }
     }
 }
@@ -61,17 +61,17 @@ pub fn av_strerror(code: i32) -> String {
 
 
 macro_rules! FmtError {
-    ($err:ident, $($format_args:tt)*) => {
-        // Error::$err(format!($($format_args)*))
-        Error::$err(format!($($format_args)*))
-    }
+    ($err:ident, $($format_args:tt)*) => {{
+        use crate::format::error::*;
+        Error { code: ErrorCode::$err, msg: format!($($format_args)*) }
+    }}
 }
 
 macro_rules! AVError {
-    ($err:ident, $code:ident) => {
-        // Error::$err(super::error::av_strerror($code))
-        Error::$err(super::error::av_strerror($code))
-    }
+    ($err:ident, $code:ident) => {{
+        use crate::format::error::*;
+        Error { code: ErrorCode::$err, msg: super::error::av_strerror($code) }
+    }}
 }
 
 

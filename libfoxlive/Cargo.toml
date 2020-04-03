@@ -4,10 +4,9 @@ version = "0.1.0"
 authors = ["bkfox <thomas bkfox net>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 libc = "0.2.68"
+
 bitflags="1.2.1"
 smallvec="1.2.0"
 petgraph="0.5.0"
@@ -16,6 +15,7 @@ futures="0.3.4"
 # libpulse_binding="2.15.0"
 jack="0.6.2"
 
+libfoxlive_derive = { path = "../libfoxlive_derive" }
 
 [build-dependencies]
 bindgen = "0.53.2"

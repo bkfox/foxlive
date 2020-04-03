@@ -1,5 +1,3 @@
-use std::sync::{Arc,RwLock};
-
 use smallvec::SmallVec;
 
 use super::channels::*;
@@ -7,13 +5,13 @@ use super::samples::*;
 
 
 /// Continguous samples buffer
-pub type Buffer<S: Sample> = Vec<S>;
+pub type Buffer<S> = Vec<S>;
 
 /// Container of multiple audio buffers
-pub type Buffers<S: Sample> = SmallVec<[Buffer<S>; 5]>;
+pub type Buffers<S> = SmallVec<[Buffer<S>; 5]>;
 
 /// Container of multiple buffer slices
-pub type BuffersSlices<'a,S: Sample> = SmallVec<[&'a mut [S]; 5]>;
+pub type BuffersSlices<'a,S> = SmallVec<[&'a mut [S]; 5]>;
 
 
 impl<S: Sample> Channels for Buffers<S> {
