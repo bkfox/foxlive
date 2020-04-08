@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use std::ptr::null_mut;
 
-use crate::data::channels::ChannelLayout;
+use crate::data::ChannelLayout;
 
 use super::ffi;
 use super::error::Error;
@@ -24,9 +24,14 @@ impl CodecContext {
 
         // FIXME: stream.codec is deprecated, however, using avcodec_alloc_context3 does not
         //        provides context.sample_rate and maybe other values
-        let context = stream.codec; // unsafe { ffi::avcodec_alloc_context3(codec) };
+        let context = unsafe { ffi::avcodec_alloc_context3(codec) };
         if context.is_null() {
             return Err(FmtError!(Codec, "can not allocate codec context"));
+        }
+
+        match unsafe { ffi::avcodec_parameters_to_context(context, stream.codecpar()) } {
+            r if r < 0 => return Err(AVError!(Codec, r)),
+            _ => {},
         }
 
         match unsafe { ffi::avcodec_open2(context, codec, null_mut()) } {
@@ -78,9 +83,9 @@ impl CodecContext {
 
 impl Drop for CodecContext {
     fn drop(&mut self) {
-        /* if !self.context.is_null() {
+        if !self.context.is_null() {
             unsafe { ffi::avcodec_free_context(&mut self.context); }
-        } */
+        }
     }
 }
 

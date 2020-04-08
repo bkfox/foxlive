@@ -1,15 +1,14 @@
 //! Provide a simple interface to read and manipulate audio files.
 use std::sync::{Arc,RwLock};
 
-use crate::data::buffers::Buffers;
-use crate::data::channels::*;
-use crate::data::samples::{Sample,SampleRate};
+use crate::data::{Buffer,Sample,SampleRate};
 
 use super::futures::*;
 use super::error::Error;
-use super::reader::{Reader,ClosureReaderHandler};
+use super::reader::{Reader};
 use super::stream::StreamId;
 
+/*
 
 #[repr(u8)]
 pub enum MediaState {
@@ -103,5 +102,5 @@ impl<S: Sample> Drop for Media<S> {
         *state = MediaState::Closed;
     }
 }
-
+*/
 

@@ -2,8 +2,7 @@ use std::marker::PhantomData;
 
 use crate as libfoxlive;
 use libfoxlive_derive::foxlive_controller;
-use crate::data::channels::*;
-use crate::data::samples::Sample;
+use crate::data::{BufferView,Sample,NChannels};
 
 use super::graph::ProcessScope;
 use super::dsp::DSP;
@@ -14,7 +13,7 @@ use super::dsp::DSP;
 struct ClosureDSP<S,PS,F>
     where S: 'static+Sample,
           PS: 'static+ProcessScope,
-          F: 'static+FnMut(&PS, Option<&dyn Channels<Sample=S>>, Option<&mut dyn ChannelsMut<Sample=S>>)
+          F: 'static+FnMut(&PS, Option<&dyn BufferView<Sample=S>>, Option<&mut dyn BufferView<Sample=S>>)
 {
     n_channels: NChannels,
     is_source: bool,
@@ -26,7 +25,7 @@ struct ClosureDSP<S,PS,F>
 impl<S,PS,F> ClosureDSP<S,PS,F>
     where S: 'static+Sample,
           PS: 'static+ProcessScope,
-          F: 'static+FnMut(&PS, Option<&dyn Channels<Sample=S>>, Option<&mut dyn ChannelsMut<Sample=S>>)
+          F: 'static+FnMut(&PS, Option<&dyn BufferView<Sample=S>>, Option<&mut dyn BufferView<Sample=S>>)
 {
     fn new(n_channels: NChannels, is_source: bool, is_sink: bool, closure: F) -> Self {
         Self {
@@ -43,13 +42,13 @@ impl<S,PS,F> ClosureDSP<S,PS,F>
 impl<S,PS,F> DSP for ClosureDSP<S,PS,F>
     where S: 'static+Sample,
           PS: 'static+ProcessScope,
-          F: 'static+FnMut(&PS, Option<&dyn Channels<Sample=S>>, Option<&mut dyn ChannelsMut<Sample=S>>)
+          F: 'static+FnMut(&PS, Option<&dyn BufferView<Sample=S>>, Option<&mut dyn BufferView<Sample=S>>)
 {
     type Sample = S;
     type Scope = PS;
 
-    fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn Channels<Sample=Self::Sample>>,
-                     output: Option<&mut dyn ChannelsMut<Sample=Self::Sample>>)
+    fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn BufferView<Sample=Self::Sample>>,
+                     output: Option<&mut dyn BufferView<Sample=Self::Sample>>)
     {
         (self.closure)(scope, input, output)
     }

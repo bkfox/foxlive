@@ -1,4 +1,5 @@
 /// Provides types and utilities to manipulate samples.
+use std::fmt::{Display,Debug};
 use std::ops::{Add,Mul};
 use std::marker::Unpin;
 
@@ -30,47 +31,78 @@ impl SampleFmt {
 
 /// Sample to SampleFmt conversion
 pub trait IntoSampleFmt {
-    fn into_sample_fmt() -> SampleFmt { SampleFmt::None }
+    fn into_sample_fmt(interleaved: bool) -> SampleFmt { SampleFmt::None }
 
-    fn into_sample_ffi() -> ffi::AVSampleFormat {
-        Self::into_sample_fmt().as_ffi()
+    fn into_sample_ffi(interleaved: bool) -> ffi::AVSampleFormat {
+        Self::into_sample_fmt(interleaved).as_ffi()
     }
 }
 
 impl IntoSampleFmt for u8 {
-    fn into_sample_fmt() -> SampleFmt { SampleFmt::U8p }
+    fn into_sample_fmt(interleaved: bool) -> SampleFmt {
+        if interleaved { SampleFmt::U8 }
+        else { SampleFmt::U8p }
+    }
 }
 
 impl IntoSampleFmt for i16 {
-    fn into_sample_fmt() -> SampleFmt { SampleFmt::S16p }
+    fn into_sample_fmt(interleaved: bool) -> SampleFmt {
+        if interleaved { SampleFmt::S16 }
+        else { SampleFmt::S16p }
+    }
 }
 
 impl IntoSampleFmt for i32 {
-    fn into_sample_fmt() -> SampleFmt { SampleFmt::S32p }
+    fn into_sample_fmt(interleaved: bool) -> SampleFmt {
+        if interleaved { SampleFmt::S32 }
+        else { SampleFmt::S32p }
+    }
 }
 
 impl IntoSampleFmt for f32 {
-    fn into_sample_fmt() -> SampleFmt { SampleFmt::Fltp }
+    fn into_sample_fmt(interleaved: bool) -> SampleFmt {
+        if interleaved { SampleFmt::Flt }
+        else { SampleFmt::Fltp }
+    }
 }
 
 impl IntoSampleFmt for f64 {
-    fn into_sample_fmt() -> SampleFmt { SampleFmt::Dblp }
+    fn into_sample_fmt(interleaved: bool) -> SampleFmt {
+        if interleaved { SampleFmt::Dbl }
+        else { SampleFmt::Dblp }
+    }
 }
 
-use std::fmt::Display;
 
 /// Generic trait for samples
 pub trait Sample: 'static+
                   Add<Output=Self>+Mul<Output=Self>+
-                  Copy+Default+IntoSampleFmt+Unpin+Display
-{}
+                  Copy+Default+IntoSampleFmt+Unpin+Display+Debug
+{
+    /// Identity value
+    fn identity() -> Self;
+}
 
 
-impl Sample for u8 {}
-impl Sample for i16 {}
-impl Sample for i32 {}
-impl Sample for f32 {}
-impl Sample for f64 {}
+impl Sample for u8 {
+    fn identity() -> Self { 1 }
+}
+
+impl Sample for i16 {
+    fn identity() -> Self { 1 }
+}
+
+impl Sample for i32 {
+    fn identity() -> Self { 1 }
+}
+
+impl Sample for f32 {
+    fn identity() -> Self { 1.0 }
+}
+
+impl Sample for f64 {
+    fn identity() -> Self { 1.0 }
+}
 
 
 /// Sample rate
@@ -100,27 +132,26 @@ pub fn map_samples_inplace<S: Sample>(a: SampleSliceMut<S>, func: &impl Fn(S) ->
 
 
 /// Zip-Map frames together and update `a` with resulting values.
-pub fn copy_samples_inplace<S: Sample>(a: SampleSliceMut<S>, b: SampleSlice<S>)
+pub fn copy_samples_inplace<'a,S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>)
 {
-    for (s_a, s_b) in a.iter_mut().zip(b) {
+    for (s_a, s_b) in a.zip(b) {
         *s_a = *s_b;
     }
 }
 
 
 /// Zip-Map frames together and update `a` with resulting values.
-pub fn zip_map_samples_inplace<S: Sample>(a: SampleSliceMut<S>, b: SampleSlice<S>, func: &impl Fn(S, S) -> S)
+pub fn zip_map_samples_inplace<'a, S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>, func: &impl Fn(S, S) -> S)
 {
-    for (s_a, s_b) in a.iter_mut().zip(b) {
+    for (s_a, s_b) in a.zip(b) {
         *s_a = func(*s_a, *s_b);
     }
 }
 
 /// Samples addition between two slices and
-pub fn add_samples_inplace<S: Sample>(a: SampleSliceMut<S>, b: SampleSlice<S>) {
+pub fn add_samples_inplace<'a,S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>) {
     zip_map_samples_inplace(a, b, &|a: S, b: S| a.add(b))
 }
-
 
 
 #[cfg(test)]
@@ -137,7 +168,7 @@ mod tests {
     #[test]
     fn add_samples_inplace() {
         let (mut a, b) = ([1, 2, 3], [1, 2, 3]);
-        super::add_samples_inplace(&mut a, &b);
+        super::add_samples_inplace(a.iter_mut(), b.iter());
 
         assert_eq!(a, [2, 4, 6]);
     }

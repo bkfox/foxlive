@@ -13,6 +13,7 @@
 //: use type AVCodec
 //: use type AVCodecContext
 //: use type AVFormatContext
+//: use type AVDiscard
 //: use type AVRounding
 //: use type SwrContext
 //
@@ -21,11 +22,13 @@
 //: use fn av_strerror
 //: use fn av_register_all
 //: use fn av_rescale_rnd
+//: use fn av_rescale
 //: use fn av_get_bytes_per_sample
 //
 //: use fn av_frame_alloc
 //: use fn av_frame_free
 //: use fn av_read_frame
+//: use fn av_seek_frame
 //
 //: use fn av_packet_alloc
 //: use fn av_packet_free
@@ -41,6 +44,7 @@
 //: use fn avcodec_open2
 //: use fn avcodec_send_packet
 //: use fn avcodec_receive_frame
+//: use fn avcodec_parameters_to_context
 //
 //: use fn swr_alloc_set_opts
 //: use fn swr_convert

@@ -4,7 +4,7 @@ pub type ControlIndex = u32;
 
 
 /// Control type. Some variant have tuple values that specify range value as `(min, max, step)`.
-#[derive(Copy,Clone)]
+#[derive(Copy,Clone,Debug)]
 pub enum ControlType {
     Bool,
     U8(u8,u8,u8),
@@ -17,7 +17,7 @@ pub enum ControlType {
 
 
 /// A generic value that can be passed down to controller
-#[derive(Copy,Clone)]
+#[derive(Copy,Clone,Debug)]
 pub enum ControlValue {
     Bool(bool),
     U8(u8),
@@ -64,8 +64,10 @@ ImplControlValue!{ F32, f32 }
 ImplControlValue!{ F64, f64 }
 ImplControlValue!{ Index, usize }
 
+
+/// Metadata as (key, value)
 pub type Metadata = (String,String);
-/// Metadata for controller and its controls
+/// List of metadatas for controller and its controls
 pub type Metadatas = Vec<Metadata>;
 
 /// Map information to a control

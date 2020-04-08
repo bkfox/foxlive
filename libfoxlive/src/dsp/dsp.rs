@@ -1,7 +1,6 @@
 use std::any::Any;
 
-use crate::data::channels::*;
-use crate::data::samples::Sample;
+use crate::data::{BufferView,Sample,NChannels};
 use super::graph::ProcessScope;
 use super::controller::Controller;
 
@@ -11,8 +10,8 @@ pub trait DSP: Any+Controller {
     type Sample: Sample;
     type Scope: ProcessScope;
 
-    fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn Channels<Sample=Self::Sample>>,
-                     output: Option<&mut dyn ChannelsMut<Sample=Self::Sample>>);
+    fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn BufferView<Sample=Self::Sample>>,
+                     output: Option<&mut dyn BufferView<Sample=Self::Sample>>);
 
     /// Return number of handled channels
     fn n_channels(&self) -> NChannels {

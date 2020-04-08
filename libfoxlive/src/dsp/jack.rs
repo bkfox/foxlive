@@ -48,7 +48,7 @@ use smallvec::SmallVec;
 
 use crate as libfoxlive;
 use libfoxlive_derive::foxlive_controller;
-use crate::data::channels::*;
+use crate::data::{BufferView,NChannels,NSamples,NFrames};
 use crate::data::samples::*;
 use super::dsp::DSP;
 use super::graph::ProcessScope;
@@ -67,20 +67,20 @@ impl ProcessScope for j::ProcessScope {
 
 #[foxlive_controller("jack_input")]
 pub struct JackInput {
-    ports: SmallVec<[j::Port<j::AudioIn>; 2]>
+    pub ports: SmallVec<[j::Port<j::AudioIn>; 2]>
 }
 
 impl DSP for JackInput {
     type Sample=f32;
     type Scope=j::ProcessScope;
 
-    fn process_audio(&mut self, scope: &Self::Scope, _input: Option<&dyn Channels<Sample=Self::Sample>>,
-                     output: Option<&mut dyn ChannelsMut<Sample=Self::Sample>>)
+    fn process_audio(&mut self, scope: &Self::Scope, _input: Option<&dyn BufferView<Sample=Self::Sample>>,
+                     output: Option<&mut dyn BufferView<Sample=Self::Sample>>)
     {
         let output = output.expect("output not provided");
         for (index, port) in self.ports.iter().enumerate() {
             let slice = port.as_slice(scope);
-            add_samples_inplace(output.channel_mut(index as u8), slice);
+            add_samples_inplace(output.channel_mut(index as NChannels).unwrap(), slice.iter());
         }
     }
 
@@ -94,7 +94,7 @@ impl DSP for JackInput {
 
 #[foxlive_controller("jack_output")]
 pub struct JackOutput {
-    ports: SmallVec<[j::Port<j::AudioOut>; 2]>
+    pub ports: SmallVec<[j::Port<j::AudioOut>; 2]>
 }
 
 
@@ -118,14 +118,14 @@ impl DSP for JackOutput {
     type Sample=f32;
     type Scope=j::ProcessScope;
 
-    fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn Channels<Sample=Self::Sample>>,
-                     _output: Option<&mut dyn ChannelsMut<Sample=Self::Sample>>)
+    fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn BufferView<Sample=Self::Sample>>,
+                     _output: Option<&mut dyn BufferView<Sample=Self::Sample>>)
     {
         let input = input.expect("input not provided");
         for (index, port) in self.ports.iter_mut().enumerate() {
             let slice = port.as_mut_slice(scope);
             // map_samples_inplace(slice, &|s| at.sin());
-            copy_samples_inplace(slice, input.channel(index as u8));
+            copy_samples_inplace(slice.iter_mut(), input.channel(index as NChannels).unwrap());
         }
     }
 

@@ -1,9 +1,7 @@
 /// Provides Channels trait used to manipulate multi-channels frames.
-use std::ops::Add;
 use bitflags::bitflags;
 
 use super::ffi;
-use super::samples::*;
 
 
 bitflags! {
@@ -90,87 +88,5 @@ impl ChannelLayout {
 
 /// Number of channels
 pub type NChannels = u8;
-
-
-/// Multi-channels samples manipulation
-pub trait Channels {
-    type Sample: Sample;
-
-    /// Total number of samples per channel
-    fn n_samples(&self) -> NSamples;
-
-    /// Total number
-    fn n_channels(&self) -> NChannels;
-
-    /// Return channel
-    fn channel(&self, channel: NChannels) -> SampleSlice<Self::Sample>;
-
-    /// Get channel layout
-    fn get_layout(&self) -> ChannelLayout {
-        ChannelLayout::from_n_channels(self.n_channels()).unwrap()
-    }
-}
-
-
-pub trait ChannelsMut : Channels {
-    /// Return mutable channel
-    fn channel_mut(&mut self, channel: NChannels) -> SampleSliceMut<Self::Sample>;
-
-    /// Clear buffers
-    fn clear(&mut self);
-
-    /// Resize buffer for the provided channels count
-    fn resize_channels(&mut self, channels: NChannels);
-
-    /// Resize channels to handle provided channels layout
-    fn set_layout(&mut self, layout: ChannelLayout) {
-        self.resize_channels(layout.n_channels())
-    }
-
-    /// Fill audio buffer with the provided value
-    fn fill(&mut self, value: Self::Sample)
-        where Self: Sized
-    {
-        self.map_inplace(&|_a| value);
-    }
-
-    /// Map buffer inplace with the provided buffer and function.
-    fn map_inplace(&mut self, func: &dyn Fn(Self::Sample) -> Self::Sample)
-        where Self: Sized
-    {
-        for i in 0..self.n_channels() {
-            map_samples_inplace(self.channel_mut(i), &func);
-        }
-    }
-
-    fn copy_inplace(&mut self, b: &dyn Channels<Sample=Self::Sample>, start: usize)
-    {
-        if self.n_channels() <= b.n_channels() {
-            for i in 0..self.n_channels() {
-                copy_samples_inplace(self.channel_mut(i), &b.channel(i)[start..])
-            }
-        }
-    }
-
-    /// Map buffer inplace with the provided buffer and function.
-    fn zip_map_inplace(&mut self, b: &dyn Channels<Sample=Self::Sample>,
-                       start: usize,
-                       func: &dyn Fn(Self::Sample, Self::Sample) -> Self::Sample)
-    {
-        if self.n_channels() <= b.n_channels() {
-            for i in 0..self.n_channels() {
-                zip_map_samples_inplace(self.channel_mut(i), &b.channel(i)[start..], &func)
-            }
-        }
-    }
-
-    /// Merge with the provided Channels using simple addition.
-    fn merge_inplace(&mut self, b: &impl Channels<Sample=Self::Sample>, start: usize)
-        where Self: Sized,
-              Self::Sample: Default+Copy+Add<Output=Self::Sample>
-    {
-        self.zip_map_inplace(b, start, &|a, b| a.add(b))
-    }
-}
 
 

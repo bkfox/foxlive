@@ -1,9 +1,10 @@
 use std::marker::PhantomData;
 use std::ops::Deref;
 
+use crate::data::{Duration,NChannels,SampleRate,TimeBase};
+
 use super::ffi;
 use super::format::FormatContext;
-use crate::data::channels::NChannels;
 
 
 /// Type of the stream
@@ -61,7 +62,12 @@ impl MediaType {
 }
 
 
-
+/// Stream information
+pub struct StreamInfo {
+    pub n_channels: NChannels,
+    pub rate: SampleRate,
+    pub duration: Duration,
+}
 
 
 /// Stream index
@@ -98,13 +104,30 @@ impl<'a> Stream<'a> {
         MediaType::from_av(self.codecpar().codec_type)
     }
 
+    /// Number of channels
     pub fn n_channels(&self) -> NChannels {
         self.codecpar().channels as NChannels
     }
 
-    // TODO:
-    // - channel_layout
-    // - n_channels
+    /// Stream duration
+    pub fn duration(&self) -> Duration {
+        TimeBase::from((self.time_base.num, self.time_base.den))
+            .ts_to_duration(unsafe { (*self.stream).duration })
+    }
+
+    /// Stream information as plain struct
+    pub fn infos(&self) -> StreamInfo {
+        StreamInfo {
+            n_channels: self.n_channels(),
+            rate: self.codecpar().sample_rate,
+            duration: self.duration(),
+        }
+    }
+
+    /// Set stream's discard
+    pub fn set_discard(&self, discard: ffi::AVDiscard) {
+        unsafe { (*self.stream).discard = discard; }
+    }
 }
 
 

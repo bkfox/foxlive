@@ -2,7 +2,7 @@ use std::ffi::CStr;
 use super::ffi;
 
 
-#[derive(Debug)]
+#[derive(Clone,Debug)]
 #[repr(u8)]
 pub enum ErrorCode {
     Media,
@@ -14,7 +14,7 @@ pub enum ErrorCode {
 }
 
 
-#[derive(Debug)]
+#[derive(Clone,Debug)]
 pub struct Error {
     pub code: ErrorCode,
     pub msg: String,
