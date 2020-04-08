@@ -57,16 +57,8 @@ impl<S> Reader<S>
     pub fn new(format: FormatContext, stream_id: Option<StreamId>, rate: SampleRate, layout: Option<ChannelLayout>)
         -> Result<Self,Error>
     {
-        let stream = match stream_id {
-            Some(stream_id) => format.stream(stream_id),
-            None => format.streams().find(|s| s.media_type().is_audio())
-        };
-
+        let stream = format.audio_stream(stream_id);
         if let Some(stream) = stream {
-            if !stream.media_type().is_audio() {
-                return Err(FmtError!(Reader, "Stream is not audio"))
-            }
-
             // discard unused streams
             for stream in format.streams() {
                 if stream.index != stream.index {
@@ -98,7 +90,7 @@ impl<S> Reader<S>
                 handler: None,
             })
         }
-        else { Err(FmtError!(Reader, "audio stream not found")) }
+        else { Err(FmtError!(Reader, "no audio stream found")) }
     }
 
     /// Create a new media reader for the provided file url

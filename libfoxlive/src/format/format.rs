@@ -41,14 +41,24 @@ impl FormatContext {
     }
 
     /// Return a Stream for the given index
-    pub fn stream(&self, id: StreamId) -> Option<Stream> {
+    pub fn stream(&self, stream_id: StreamId) -> Option<Stream> {
         let context = unsafe { &*self.context };
-        if id >= context.nb_streams as i32 {
+        if stream_id >= context.nb_streams as i32 {
             return None
         }
 
         let streams = context.streams;
-        Some(unsafe { Stream::new(*streams.offset(id as isize)) })
+        Some(unsafe { Stream::new(*streams.offset(stream_id as isize)) })
+    }
+
+    /// Return audio stream (for the provided id if any, otherwise the first
+    /// candidate available).
+    pub fn audio_stream(&self, stream_id: Option<StreamId>) -> Option<Stream> {
+        match stream_id.and_then(|i| self.stream(i)) {
+            Some(stream) if stream.media_type().is_audio() => Some(stream),
+            None => self.streams().find(|s| s.media_type().is_audio()),
+            _ => None
+        }
     }
 
     /// Return iterator over metadata

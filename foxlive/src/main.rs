@@ -1,6 +1,6 @@
 #![feature(unboxed_closures)]
 use std::sync::{Arc,RwLock};
-use std::time::Duration;
+use std::time::{Duration,SystemTime};
 
 use jack as j;
 use futures::executor::LocalPool;
@@ -9,6 +9,7 @@ use libfoxlive::format;
 use libfoxlive::dsp::jack::*;
 use libfoxlive::dsp::graph::Graph;
 use libfoxlive::dsp::media::MediaView;
+use libfoxlive::dsp::controller::*;
 
 
 fn main() {
@@ -32,9 +33,19 @@ fn main() {
     let graph = Arc::new(RwLock::new(graph));
     let graph_ = graph.clone();
 
+    let mut now = SystemTime::now();
     let process_handler = j::ClosureProcessHandler::new(
         move |client: &j::Client, scope: &j::ProcessScope| {
-            graph_.write().unwrap().process_nodes(scope);
+            let mut graph = graph_.write().unwrap();
+            graph.process_nodes(scope);
+
+            if let Ok(elapsed) = now.elapsed() {
+                if elapsed.as_secs() > 10 {
+                    graph.set_control(0, ControlValue::Index(0));
+                    now = SystemTime::now();
+                }
+            }
+
             j::Control::Continue
         },
     );
@@ -45,6 +56,4 @@ fn main() {
     println!("Start decoding...");
     pool.run_until(reader);
     println!("Decoding done...");
-
-    loop {}
 }

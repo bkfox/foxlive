@@ -1,11 +1,12 @@
 use std::ops::Deref;
+use std::convert::Into;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool,Ordering};
 
 use petgraph as pg;
 use petgraph::stable_graph as sg;
 
-use crate::data::{Buffer,BufferView,Sample,NSamples,NFrames};
+use crate::data::{Buffer,BufferView,SliceBuffer,Sample,NChannels,NSamples,NFrames};
 
 use super::controller::*;
 use super::dsp::{DSP,BoxedDSP};
@@ -24,27 +25,24 @@ pub struct Unit<S,PS>
           PS: ProcessScope
 {
     /// Rendered buffer
-    pub buffer: Buffer<S,Vec<S>>,
-    /// Last buffer update time
-    pub last_frame_time: NFrames,
+    pub order: usize,
+    /// Wether controls have been mapped
+    mapped: bool,
     /// Unit is being processing some audio
     pub processing: AtomicBool,
     /// Contained dsp
     pub dsp: BoxedDSP<S, PS>,
-    /// Wether controls have been mapped
-    mapped: bool,
 }
 
 impl<S,PS> Unit<S,PS>
     where S: Sample,
           PS: ProcessScope
 {
-    fn new<D>(dsp: D) -> Unit<S,PS>
+    fn new<D>(dsp: D) -> Self
         where D: 'static+DSP<Sample=S,Scope=PS>
     {
-        let n_channels = dsp.n_channels();
         Unit {
-            buffer: Buffer::with_capacity(true, n_channels, 1024),
+            order: 0,
             last_frame_time: 0,
             processing: AtomicBool::new(false),
             dsp: Box::new(dsp),
@@ -52,10 +50,16 @@ impl<S,PS> Unit<S,PS>
         }
     }
 
-    fn process_audio(&mut self, scope: &PS, input: Option<&dyn BufferView<Sample=S>>) {
+    /// Get buffer slice in the provided buffers arena
+    fn buffer<'a>(&self, buffers: &'a mut Vec<S>, buffer_len: usize) -> SliceBuffer<'a,S> {
+        let pos = self.order * buffer_len;
+        (true,self.n_channels(),&mut buffers[pos..pos+buffer_len]).into()
+    }
+
+    /*fn process_audio(&mut self, scope: &PS, input: Option<&dyn BufferView<Sample=S>>) {
         self.buffer.resize(self.dsp.n_channels(), scope.n_samples());
         self.dsp.process_audio(scope, input, Some(&mut self.buffer));
-    }
+    }*/
 
     /// Return inner DSP consuming self.
     fn into_inner(self) -> BoxedDSP<S, PS> {
@@ -88,6 +92,8 @@ pub struct Graph<S,PS>
 {
     dag: Dag<S,PS>,
     ordered_nodes: Vec<NodeIndex>,
+    n_channels: NChannels,
+    buffers: Vec<S>,
     dry_buffer: Buffer<S,Vec<S>>,
     controls: BTreeMap<ControlIndex, (NodeIndex,ControlMap)>,
 }
@@ -118,6 +124,8 @@ impl<S,PS> Graph<S,PS>
         Graph {
             dag: Dag::with_capacity(nodes, edges),
             ordered_nodes: Vec::with_capacity(nodes),
+            n_channels: 0,
+            buffers: Vec::new(),
             dry_buffer: Buffer::with_capacity(true, 2, 1024),
             controls: BTreeMap::new(),
         }
@@ -142,6 +150,8 @@ impl<S,PS> Graph<S,PS>
     pub fn add_node<D>(&mut self, dsp: D) -> NodeIndex
         where D: 'static+DSP<Sample=S,Scope=PS>
     {
+        self.n_channels = self.n_channels.max(dsp.n_channels());
+
         let node = self.dag.add_node(Unit::new(dsp));
         self.map_node_controls(node);
         node
@@ -179,8 +189,16 @@ impl<S,PS> Graph<S,PS>
                 .and_then(|edge| Some(self.dag.remove_edge(edge)));
     }
 
+    pub fn buffer_slice<'a>(buffers: &'a mut Vec<S>, n_channels: NChannels, pos: usize, len: usize) -> SliceBuffer<'a,S> {
+        (true,n_channels,&mut buffers[pos..pos+len]).into()
+    }
+
     /// Process graph nodes
     pub fn process_nodes(&mut self, scope: &PS) {
+        let buffer_len = scope.n_samples() * self.n_channels as usize;
+        self.buffers.resize(buffer_len * self.ordered_nodes.len(), S::default());
+        let mut order = 0;
+
         for node_index in self.ordered_nodes.iter() {
             let node_index = *node_index;
             let node = self.dag.node_weight(node_index);
@@ -192,11 +210,6 @@ impl<S,PS> Graph<S,PS>
 
             let node = node.unwrap();
             node.processing.store(true, Ordering::Relaxed);
-
-            // node already processed: do next
-            if node.last_frame_time == scope.last_frame_time() {
-                continue;
-            }
 
             // ensure buffer size
             let input =
@@ -215,7 +228,8 @@ impl<S,PS> Graph<S,PS>
                     for input in inputs {
                         // take input if not removed
                         if let Some(input) = self.dag.node_weight(input) {
-                            buffer.merge_inplace(&input.buffer);
+                            let node_buffer = input.buffer(&mut self.buffers, buffer_len);
+                            buffer.merge_inplace(&node_buffer);
                         }
                     }
 
@@ -224,10 +238,16 @@ impl<S,PS> Graph<S,PS>
 
             // process node
             let mut node = self.dag.node_weight_mut(node_index).expect("");
-            node.process_audio(scope, input);
-            node.last_frame_time = scope.last_frame_time();
-
+            node.order = order;
+            if node.is_sink() {
+                node.dsp.process_audio(scope, input, None);
+            }
+            else {
+                let mut node_buffer = node.buffer(&mut self.buffers, buffer_len);
+                node.dsp.process_audio(scope, input, Some(&mut node_buffer));
+            }
             node.processing.store(false, Ordering::Relaxed);
+            order += 1;
         }
     }
 
