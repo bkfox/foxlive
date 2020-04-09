@@ -37,8 +37,8 @@ fn drain_attrs(attrs: &mut Vec<Attribute>, mut func: impl FnMut(&Attribute) -> b
 
 
 /// Read "control" attribute, returning it as `(type, name)`.
-/// Attribute format: `#[control(type, label?)]`
-fn read_control_attr(attr: &Attribute) -> Option<(Expr, String)> {
+/// Attribute format: `#[control(type, label?, get_func, set_func)]`
+fn read_control_attr(field: String, attr: &Attribute) -> Option<(Expr, String, Expr, Expr)> {
     if !attr.path.is_ident("control") {
         return None;
     }
@@ -47,18 +47,54 @@ fn read_control_attr(attr: &Attribute) -> Option<(Expr, String)> {
             let args = meta.nested;
             if let syn::NestedMeta::Meta(ref meta) = args[0] {
                 let meta = meta.to_token_stream();
+
+                // control type
                 let c_type = parse2::<Expr>(meta).unwrap();
-                /*let c_type = meta.path().get_ident().unwrap().to_string();
-                let c_type_args = meta.parse_args::<Expr>
-                let c_type = syn::parse_str::<Expr>(&format!("ControlType::{}", c_type)).unwrap();*/
 
-                if args.len() == 1 {
-                    return Some((c_type, String::new()));
+                let mut n = 1;
+
+                // label?
+                let mut label = String::new();
+                if args.len() > n {
+                    if let syn::NestedMeta::Lit(Lit::Str(ref label_)) = args[n] {
+                        label = label_.value();
+                        n += 1;
+                    }
                 }
 
-                if let syn::NestedMeta::Lit(Lit::Str(ref label)) = args[1] {
-                    return Some((c_type, label.value()));
+                // getter?
+                let mut get = None;
+                let mut set = None;
+                if args.len() > n {
+                    if let syn::NestedMeta::Meta(ref meta) = args[n] {
+                        let meta = meta.to_token_stream();
+                        let ident = parse2::<Ident>(meta).unwrap().to_string();
+                        get = parse_str::<Expr>(&format!("self.{}().into()", ident)).ok();
+                        n += 1;
+
+                        // set? (implies get)
+                        if args.len() > n {
+                            if let syn::NestedMeta::Meta(ref meta) = args[n] {
+                                let meta = meta.to_token_stream();
+                                let ident = parse2::<Ident>(meta).unwrap().to_string();
+                                set = parse_str::<Expr>(&format!("self.{}(value).map(|r| r.into())", ident)).ok();
+                                // n += 1;
+                            }
+                            else { panic!("invalid set argument"); }
+                        }
+                    }
+                    else { panic!("invalid get argument"); }
                 }
+
+                if get.is_none(){
+                    get = parse_str::<Expr>(&format!("self.{}.into()", field)).ok();
+                }
+
+                if set.is_none() {
+                    set = parse_str::<Expr>(&format!("{{ self.{} = value; Ok(value.into()) }}", field)).ok();
+                }
+
+                return Some((c_type, label, get.unwrap(), set.unwrap()));
             }
         }
     }
@@ -87,13 +123,16 @@ fn read_meta_attr(attr: &Attribute) -> Option<String> {
 }
 
 
-/// Return control informations for the provided field as: `field, control_type, metas`.
-fn get_control_info(field: &mut Field) -> Option<(Ident, Expr, Expr)> {
-    let mut c_type = None;
+/// Return control informations for the provided field as: `field, control_type, get, set, metas`.
+fn get_control_info(field: &mut Field) -> Option<(Ident, Expr, Expr, Expr, Expr)> {
+    let field_ident = field.ident.as_ref().unwrap();
+
+    let mut infos = None;
     let mut metas = String::new();
+
     drain_attrs(&mut field.attrs, |attr| {
-        if let Some((c_type_, name)) = read_control_attr(attr) {
-            c_type = Some(c_type_);
+        if let Some((c_type_, name, get, set)) = read_control_attr(field_ident.to_string(), attr) {
+            infos = Some((c_type_, get, set));
             if !name.is_empty() {
                 metas += &format!("(String::from(\"name\"),String::from(\"{}\"))", name);
             }
@@ -108,11 +147,11 @@ fn get_control_info(field: &mut Field) -> Option<(Ident, Expr, Expr)> {
         false
     });
 
-    c_type.map(|c_type| {
+    infos.map(|(c_type, get, set)| {
         let metas = if metas.is_empty() { String::from("Vec::new()") }
                     else { format!("vec![{}]", metas) };
-        (field.ident.as_ref().unwrap().clone(),
-         c_type,
+        (field_ident.clone(),
+         c_type, get, set,
          syn::parse_str::<syn::Expr>(&metas).unwrap())
     })
 }
@@ -121,20 +160,22 @@ fn get_control_info(field: &mut Field) -> Option<(Ident, Expr, Expr)> {
 /// Get all controls info as unzipped lists of elements (because quote does not access
 /// value fields)
 fn get_controls(data_struct: &mut DataStruct)
-    -> (Vec<syn::Index>, Vec<Ident>, Vec<Expr>, Vec<Expr>)
+    -> (Vec<syn::Index>, Vec<Ident>, Vec<Expr>, Vec<Expr>, Vec<Expr>, Vec<Expr>)
 {
     let controls = data_struct.fields.iter_mut().filter_map(get_control_info);
-    let (mut a, mut b, mut c, mut d) =
-        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut a, mut b, mut c, mut d, mut e, mut f) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
 
     controls.enumerate().for_each(|(index, control)| {
         a.push(syn::Index::from(index));
         b.push(control.0);
         c.push(control.1);
         d.push(control.2);
+        e.push(control.3);
+        f.push(control.4);
     });
 
-    (a, b, c, d)
+    (a, b, c, d, e, f)
 }
 
 
@@ -175,7 +216,7 @@ pub fn foxlive_controller(attrs: TokenStream, input: TokenStream) -> TokenStream
         syn::Data::Struct(ref mut ds) => ds,
         _ => panic!("controller only for struct"),
     };
-    let (fields_index, fields, fields_control, fields_meta) = get_controls(data_struct);
+    let (fields_index, fields, fields_control, fields_get, fields_set, fields_meta) = get_controls(data_struct);
 
     let impl_mod_name = parse_str::<syn::Ident>(&format!("impl_controller_for_{}", name.to_string())).unwrap();
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
@@ -194,7 +235,7 @@ pub fn foxlive_controller(attrs: TokenStream, input: TokenStream) -> TokenStream
                 fn get_control(&self, control: ControlIndex) -> Option<ControlValue> {
                     use std::convert::TryInto;
                     match control {
-                        #(#fields_index => self.#fields.try_into().ok(),)*
+                        #(#fields_index => Some(#fields_get),)*
                         _ => None,
                     }
                 }
@@ -203,9 +244,8 @@ pub fn foxlive_controller(attrs: TokenStream, input: TokenStream) -> TokenStream
                     use std::convert::TryInto;
                     match control {
                         #(#fields_index => { 
-                            if let Ok(v) = value.try_into() {
-                                self.#fields = v;
-                                Ok(value)
+                            if let Ok(value) = value.try_into() {
+                                #fields_set
                             } else { Err(()) }
                         }),*
                         _ => Err(()),
