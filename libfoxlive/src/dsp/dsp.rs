@@ -1,5 +1,7 @@
 use std::any::Any;
 
+use sample::Sample as sSample;
+
 use crate::data::{BufferView,Sample,NChannels};
 use super::graph::ProcessScope;
 use super::controller::Controller;
@@ -26,6 +28,9 @@ pub trait DSP: Any+Controller {
 
     /// Return True if the DSP has outputs
     fn is_source(&self) -> bool { false }
+
+    /// Dry/Wet mix percentage, as 1.0 is full wet, 0.0 is full dry
+    fn wet(&self) -> <<Self as DSP>::Sample as Sample>::Float { Self::Sample::identity() }
 }
 
 

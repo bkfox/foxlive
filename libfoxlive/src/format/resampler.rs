@@ -1,7 +1,7 @@
 use std::ptr::null_mut;
 use std::marker::PhantomData;
 
-use crate::data::{ChannelLayout,NChannels,NSamples,Sample,SampleRate};
+use crate::data::{ChannelLayout,NChannels,NSamples,IntoSampleFmt,Sample,SampleRate};
 
 use super::ffi;
 use super::error::Error;
@@ -10,7 +10,7 @@ use super::codec::CodecContext;
 
 /// Resample packets into an interleaved buffer to the provided rate and channel
 /// layout.
-pub struct Resampler<S: Sample> {
+pub struct Resampler<S: Sample+IntoSampleFmt> {
     swr: *mut ffi::SwrContext,
     src_rate: SampleRate,
     dst_rate: SampleRate,
@@ -18,7 +18,7 @@ pub struct Resampler<S: Sample> {
     phantom: PhantomData<S>,
 }
 
-impl<S: Sample> Resampler<S> {
+impl<S: Sample+IntoSampleFmt> Resampler<S> {
     pub fn new(context: &CodecContext, sample_rate: SampleRate,
                layout: Option<ChannelLayout>)
         -> Result<Resampler<S>,Error>
@@ -81,7 +81,8 @@ impl<S: Sample> Resampler<S> {
         )};
 
         let offset = out.len();
-        out.resize(offset + (dst_nb_samples * self.dst_n_channels as i64) as usize, S::default());
+        // FIXME: equilibrium to default
+        out.resize(offset + (dst_nb_samples * self.dst_n_channels as i64) as usize, S::equilibrium());
 
         // convert
         unsafe { ffi::swr_convert(
@@ -94,7 +95,7 @@ impl<S: Sample> Resampler<S> {
 }
 
 
-impl<S: Sample> Drop for Resampler<S> {
+impl<S: Sample+IntoSampleFmt> Drop for Resampler<S> {
     fn drop(&mut self) {
         if !self.swr.is_null() {
             unsafe { ffi::swr_free(&mut self.swr) };

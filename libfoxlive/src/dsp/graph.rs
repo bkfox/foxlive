@@ -22,7 +22,7 @@ pub trait ProcessScope : 'static {
 
 /// Graph node
 pub struct Unit<S,PS>
-    where S: Sample,
+    where S: Sample+Default,
           PS: ProcessScope
 {
     /// Rendered buffer
@@ -36,7 +36,7 @@ pub struct Unit<S,PS>
 }
 
 impl<S,PS> Unit<S,PS>
-    where S: Sample,
+    where S: Sample+Default,
           PS: ProcessScope
 {
     fn new<D>(dsp: D) -> Self
@@ -69,7 +69,7 @@ impl<S,PS> Unit<S,PS>
 
 
 impl<S,PS> Deref for Unit<S,PS>
-    where S: Sample,
+    where S: Sample+Default,
           PS: ProcessScope
 {
     type Target = dyn DSP<Sample=S,Scope=PS>;
@@ -87,7 +87,7 @@ pub type Dag<S,PS> = sg::StableGraph<Unit<S,PS>, (), pg::Directed, Ix>;
 
 
 pub struct Graph<S,PS>
-    where S: Sample,
+    where S: Sample+Default,
           PS: ProcessScope
 {
     dag: Dag<S,PS>,
@@ -100,18 +100,18 @@ pub struct Graph<S,PS>
 
 
 unsafe impl<S,PS> Sync for Graph<S,PS>
-    where S: Sample,
+    where S: Sample+Default,
           PS: ProcessScope
 {}
 
 unsafe impl<S,PS> Send for Graph<S,PS>
-    where S: Sample,
+    where S: Sample+Default,
           PS: ProcessScope
 {}
 
 
 impl<S,PS> Graph<S,PS>
-    where S: Sample,
+    where S: Sample+Default,
           PS: ProcessScope
 {
     /// Create a new empty `Graph`.
@@ -244,8 +244,15 @@ impl<S,PS> Graph<S,PS>
             }
             else {
                 let mut node_buffer = node.buffer(&mut self.buffers, buffer_len);
+
                 let n = node.dsp.process_audio(scope, input, Some(&mut node_buffer));
                 fill_samples(&mut node_buffer.as_slice_mut()[n..], S::default());
+
+                if input.is_some() && node.wet() != S::identity() {
+                    let input = input.unwrap();
+                    let (dry, wet) = (-node.wet(), node.wet());
+                    node_buffer.zip_map_inplace(input, &|a,b| a.mul_amp(wet).add_amp(b.mul_amp(dry).to_signed_sample()));
+                }
             }
             node.processing.store(false, Ordering::Relaxed);
             order += 1;
@@ -276,7 +283,7 @@ impl<S,PS> Graph<S,PS>
 
 
 impl<S,PS> Controller for Graph<S,PS>
-    where S: Sample,
+    where S: Sample+Default,
           PS: ProcessScope
 {
     fn get_metadata(&mut self) -> Metadatas {

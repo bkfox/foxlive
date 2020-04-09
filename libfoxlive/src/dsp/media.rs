@@ -4,7 +4,7 @@ use ringbuf::*;
 
 use crate as libfoxlive;
 use libfoxlive_derive::foxlive_controller;
-use crate::data::{BufferView,NChannels,NSamples,Sample,SampleRate};
+use crate::data::*;
 use crate::data::time::*;
 use crate::format::{Error,StreamInfo};
 use crate::format::reader::*;
@@ -17,26 +17,30 @@ use super::graph::ProcessScope;
 /// View over a media
 #[foxlive_controller("media")]
 pub struct MediaView<S,PS>
-    where S: Sample+IntoControlValue,
+    where S: Sample+Default+IntoSampleFmt+Unpin+IntoControlValue,
+          S::Float: IntoControlValue,
           PS: ProcessScope,
 {
-    /// Reader
+    /// Reader. The only reason it is an Arc'ed is that it should be usable
+    /// as future. MediaView will considered to be owner of the reader and
+    /// handles its lifecycle.
     pub reader: SharedReader<S>,
     /// Cached data as ringbuffer consumer
     cache: Consumer<S>,
     /// Amplification
-    #[control(I32(0,0,0), "test")]
-    amp: S,
+    #[control(I32(0,0,0), "amp")]
+    amp: S::Float,
+    /// Reading position
+    #[control(Duration, "pos", get_pos, seek)]
+    pos: NSamples,
     /// Stream information
     pub infos: Option<StreamInfo>,
-    /// Reading position
-    #[control(Index, "pos", get_pos, seek)]
-    pos: NSamples,
     phantom: PhantomData<PS>,
 }
 
 impl<S,PS> MediaView<S,PS>
-    where S: Sample+IntoControlValue,
+    where S: Sample+Default+IntoSampleFmt+Unpin+IntoControlValue,
+          S::Float: IntoControlValue,
           PS: ProcessScope,
 {
     pub fn new(rate: SampleRate, cache_duration: Duration) -> Self
@@ -79,8 +83,21 @@ impl<S,PS> MediaView<S,PS>
 }
 
 
+impl<S,PS> Drop for MediaView<S,PS>
+    where S: Sample+Default+IntoSampleFmt+Unpin+IntoControlValue,
+          S::Float: IntoControlValue,
+          PS: ProcessScope,
+{
+    fn drop(&mut self) {
+        // stop reader
+        self.reader.write().unwrap().stop();
+    }
+}
+
+
 impl<S,PS> DSP for MediaView<S,PS>
-    where S: Sample+IntoControlValue,
+    where S: 'static+Sample+Default+IntoSampleFmt+Unpin+IntoControlValue,
+          S::Float: IntoControlValue,
           PS: ProcessScope,
 {
     type Sample = S;
@@ -100,7 +117,7 @@ impl<S,PS> DSP for MediaView<S,PS>
 
         let count = cache.pop_slice(&mut slice[0..count]);
         for i in 0..count {
-            slice[i] = slice[i] * self.amp;
+            slice[i] = slice[i].mul_amp(self.amp);
         }
         self.pos += count;
         count

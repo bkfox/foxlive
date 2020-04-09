@@ -11,8 +11,8 @@ smallvec="1.2.0"
 petgraph="0.5.0"
 ringbuf="0.2.1"
 
-crossbeam-channel="0.4.2"
 futures="0.3.4"
+sample="0.10.0"
 jack="0.6.2"
 
 libfoxlive_derive = { path = "../libfoxlive_derive" }

@@ -3,6 +3,8 @@ use std::fmt::{Display,Debug};
 use std::ops::{Add,Mul};
 use std::marker::Unpin;
 
+pub use sample::Sample;
+
 use super::ffi;
 
 
@@ -75,34 +77,20 @@ impl IntoSampleFmt for f64 {
 
 
 /// Generic trait for samples
-pub trait Sample: 'static+
+/*pub trait Sample: 'static+sample::Sample+
                   Add<Output=Self>+Mul<Output=Self>+
-                  Copy+Default+IntoSampleFmt+Unpin+Display+Debug
-{
-    /// Identity value
-    fn identity() -> Self;
-}
+                  Default+IntoSampleFmt+Unpin+Display+Debug {}
 
 
-impl Sample for u8 {
-    fn identity() -> Self { 1 }
-}
+impl Sample for u8 {}
 
-impl Sample for i16 {
-    fn identity() -> Self { 1 }
-}
+impl Sample for i16 {}
 
-impl Sample for i32 {
-    fn identity() -> Self { 1 }
-}
+impl Sample for i32 {}
 
-impl Sample for f32 {
-    fn identity() -> Self { 1.0 }
-}
+impl Sample for f32 {}
 
-impl Sample for f64 {
-    fn identity() -> Self { 1.0 }
-}
+impl Sample for f64 {}*/
 
 
 /// Sample rate
@@ -139,7 +127,7 @@ pub fn map_samples<S: Sample>(a: SampleSliceMut<S>, func: &impl Fn(S) -> S)
 
 
 /// Zip-Map frames together and update `a` with resulting values.
-pub fn copy_samples<'a,S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>)
+pub fn copy_samples<'a,S: 'a+Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>)
 {
     for (s_a, s_b) in a.zip(b) {
         *s_a = *s_b;
@@ -148,7 +136,7 @@ pub fn copy_samples<'a,S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iter
 
 
 /// Zip-Map frames together and update `a` with resulting values.
-pub fn zip_map_samples<'a, S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>, func: &impl Fn(S, S) -> S)
+pub fn zip_map_samples<'a, S: 'a+Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>, func: &impl Fn(S, S) -> S)
 {
     for (s_a, s_b) in a.zip(b) {
         *s_a = func(*s_a, *s_b);
@@ -156,8 +144,8 @@ pub fn zip_map_samples<'a, S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl 
 }
 
 /// Samples addition between two slices and
-pub fn merge_samples<'a,S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>) {
-    zip_map_samples(a, b, &|a: S, b: S| a.add(b))
+pub fn merge_samples<'a,S: 'a+Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>) {
+    zip_map_samples(a, b, &|a: S, b: S| a.add_amp(b.to_signed_sample()))
 }
 
 

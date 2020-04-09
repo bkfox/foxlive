@@ -39,6 +39,7 @@ fn main() {
             let mut graph = graph_.write().unwrap();
             graph.process_nodes(scope);
 
+            // test controls
             if let Ok(elapsed) = now.elapsed() {
                 if elapsed.as_secs() > 3 {
                     let amp : f32 = graph.get_control(0).unwrap().try_into().unwrap();

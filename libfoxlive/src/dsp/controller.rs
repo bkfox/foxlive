@@ -17,11 +17,12 @@ pub enum ControlType {
     F64(f64,f64,f64),
     Duration,
     Index,
+    String,
 }
 
 
 /// A generic value that can be passed down to controller
-#[derive(Copy,Clone,Debug)]
+#[derive(Clone,Debug)]
 pub enum ControlValue {
     Bool(bool),
     U8(u8),
@@ -31,6 +32,7 @@ pub enum ControlValue {
     F64(f64),
     Duration(Duration),
     Index(usize),
+    String(String),
     // SelectionList
 }
 
@@ -68,7 +70,8 @@ ImplControlValue!{ I32, i32 }
 ImplControlValue!{ F32, f32 }
 ImplControlValue!{ F64, f64 }
 ImplControlValue!{ Duration, Duration }
-ImplControlValue!{ Index, NSamples }
+ImplControlValue!{ Index, usize }
+ImplControlValue!{ String, String }
 
 
 /// Metadata as (key, value)

@@ -20,22 +20,8 @@ use super::resampler::Resampler;
 use super::stream::{Stream,StreamId};
 
 
-/// Handler a stream reader.
-pub trait ReaderHandler : 'static+Unpin {
-    type Sample: Sample;
-
-    /// Data have been received, `has_more` indicates if there is still data to be
-    /// decoded (end of file not reached).
-    fn data_received(&mut self, buffer: &mut VecBuffer<Self::Sample>, has_more: bool);
-
-    /// Called at each reader's poll in order to do stuff (seek, request data, etc)
-    /// It returns Poll::Ready when Reader is no needed anymore.
-    fn poll(&mut self, reader: &mut Reader<Self::Sample>) -> Poll;
-}
-
-
 pub struct ReaderContext<S>
-    where S: Sample,
+    where S: Sample+Default+IntoSampleFmt+Unpin,
 {
     pub format: FormatContext,
     pub codec: CodecContext,
@@ -47,7 +33,7 @@ pub struct ReaderContext<S>
 
 
 impl<S> ReaderContext<S>
-    where S: Sample,
+    where S: Sample+Default+IntoSampleFmt+Unpin,
 {
     /// Create a new media reader.
     pub fn new(format: FormatContext, stream_id: Option<StreamId>, rate: SampleRate, layout: Option<ChannelLayout>)
@@ -88,7 +74,7 @@ impl<S> ReaderContext<S>
 
 
 impl<S> Drop for ReaderContext<S>
-    where S: Sample,
+    where S: Sample+Default+IntoSampleFmt+Unpin,
 {
     fn drop(&mut self) {
         self.codec.send_packet(null_mut());
@@ -105,7 +91,7 @@ impl<S> Drop for ReaderContext<S>
 
 
 impl<S> Deref for ReaderContext<S>
-    where S: Sample,
+    where S: Sample+Default+IntoSampleFmt+Unpin,
 {
     type Target = FormatContext;
 
@@ -120,18 +106,19 @@ impl<S> Deref for ReaderContext<S>
 /// By itself it doesn't handle multithreading, but the provided
 /// ReaderHandler can do the thing.
 pub struct Reader<S>
-    where S: Sample,
+    where S: Sample+Default+IntoSampleFmt+Unpin,
 {
     context: Option<ReaderContext<S>>,
     cache: Producer<S>,
     buffer: VecBuffer<S>,
     rate: SampleRate,
     layout: Option<ChannelLayout>,
+    stopped: bool,
 }
 
 
 impl<S> Reader<S>
-    where S: Sample,
+    where S: Sample+Default+IntoSampleFmt+Unpin,
 {
     /// Create a new media reader.
     pub fn new(cache: Producer<S>, rate: SampleRate, layout: Option<ChannelLayout>) -> Self
@@ -142,6 +129,7 @@ impl<S> Reader<S>
             buffer: VecBuffer::new(true, 1),
             rate: rate,
             layout: layout,
+            stopped: false,
         }
     }
 
@@ -166,9 +154,10 @@ impl<S> Reader<S>
         }
     }
 
-    /// Return object as boxed future
-    pub fn into_future(self) -> Box<Future> {
-        Box::new(self)
+    /// Stop reading forever, futures will `Poll::Ready(Ok())`. This should be
+    /// used only when there is no more use of reader.
+    pub fn stop(&mut self) {
+        self.stopped = true;
     }
 
     /// Get current sample rate
@@ -190,7 +179,10 @@ impl<S> Reader<S>
     /// Panics if there is no assigned handler because once the reader becomes
     /// a future, there is no way to assign one.
     pub fn poll_once(&mut self) -> Poll {
-        if self.context.is_some() && self.cache.remaining() > self.cache.len() / 2 {
+        if self.stopped {
+            Poll::Ready(Ok(()))
+        }
+        else if self.context.is_some() && self.cache.remaining() > self.cache.len() / 2 {
             pending_or_err(self.read_packet())
         }
         else { Poll::Pending }
@@ -273,7 +265,7 @@ impl<S> Reader<S>
 
 
 impl<S> futures::Future for Reader<S>
-    where S: Sample,
+    where S: Sample+Default+IntoSampleFmt+Unpin,
 {
     type Output = PollValue;
 
@@ -289,12 +281,16 @@ impl<S> futures::Future for Reader<S>
 
 /// Arced reader with an rwlock in order to make it shareable around threads
 #[derive(Clone)]
-pub struct SharedReader<S: Sample> {
+pub struct SharedReader<S>
+    where S: Sample+Default+IntoSampleFmt+Unpin,
+{
     pub reader: Arc<RwLock<Reader<S>>>,
 }
 
 
-impl<S: Sample> SharedReader<S> {
+impl<S> SharedReader<S>
+    where S: Sample+Default+IntoSampleFmt+Unpin,
+{
     pub fn new(cache: Producer<S>, rate: SampleRate, layout: Option<ChannelLayout>) -> Self {
         Self::from(Reader::new(cache, rate, layout))
     }
@@ -316,13 +312,17 @@ impl<S: Sample> SharedReader<S> {
     }
 }
 
-impl<S: Sample> From<Reader<S>> for SharedReader<S> {
+impl<S> From<Reader<S>> for SharedReader<S>
+    where S: Sample+Default+IntoSampleFmt+Unpin,
+{
     fn from(reader: Reader<S>) -> Self {
         Self { reader: Arc::new(RwLock::new(reader)) }
     }
 }
 
-impl<S: Sample> futures::Future for SharedReader<S> {
+impl<S> futures::Future for SharedReader<S>
+    where S: Sample+Default+IntoSampleFmt+Unpin,
+{
     type Output = PollValue;
 
     fn poll(self: Pin<&mut Self>, cx: &mut futures::task::Context) -> Poll {

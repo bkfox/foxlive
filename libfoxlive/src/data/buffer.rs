@@ -15,7 +15,7 @@ macro_rules! MakeChannelIter {
             phantom: PhantomData<&'a S>,
         }
 
-        impl<'a,S: Sample> Iterator for $name<'a,S> {
+        impl<'a,S: Sample+Default> Iterator for $name<'a,S> {
             type Item = &'a $($mut)* S;
 
             fn next(&mut self) -> Option<Self::Item> {
@@ -37,7 +37,7 @@ MakeChannelIter!{ChannelIterMut, mut}
 /// This trait provides methods to manipulate audio buffers.
 ///
 pub trait BufferView {
-    type Sample: Sample;
+    type Sample: Sample+Default;
 
     /// Total number of samples.
     fn len(&self) -> usize;
@@ -53,11 +53,6 @@ pub trait BufferView {
 
     /// Set buffer `is_interleave` (invalidate buffer data).
     fn set_interleaved(&mut self, interleaved: bool);
-
-    /// Return sample format for this buffer.
-    fn sample_fmt(&self) -> SampleFmt {
-        Self::Sample::into_sample_fmt(self.interleaved())
-    }
 
     /// Get channel layout
     fn get_layout(&self) -> Option<ChannelLayout>;
@@ -116,13 +111,13 @@ pub trait BufferView {
     fn merge_inplace(&mut self, src: &dyn BufferView<Sample=Self::Sample>)
         where Self: Sized
     {
-        zip_map(self, src, |a,b| *a = *a + *b)
+        zip_map(self, src, |a,b| *a = a.add_amp(b.to_signed_sample()))
     }
 }
 
 
 /// Zip and map two input buffers, starting at b's sample index.
-pub fn zip_map<S: Sample>(a: &mut dyn BufferView<Sample=S>, b: &dyn BufferView<Sample=S>,
+pub fn zip_map<S: Sample+Default>(a: &mut dyn BufferView<Sample=S>, b: &dyn BufferView<Sample=S>,
                           func: impl Fn(&mut S,&S))
 {
     // TODO: this method should be profiled for cache misses and optimized
@@ -144,7 +139,7 @@ pub fn zip_map<S: Sample>(a: &mut dyn BufferView<Sample=S>, b: &dyn BufferView<S
 /// - From<(interleaved,n_channels,buffer)>
 ///
 pub struct Buffer<S,B>
-    where S: Sample,
+    where S: Sample+Default,
 {
     interleaved: bool,
     n_channels: NChannels,
@@ -153,7 +148,7 @@ pub struct Buffer<S,B>
 }
 
 
-impl<S: Sample,B> Deref for Buffer<S,B> {
+impl<S: Sample+Default,B> Deref for Buffer<S,B> {
     type Target = B;
 
     fn deref(&self) -> &Self::Target {
@@ -161,7 +156,7 @@ impl<S: Sample,B> Deref for Buffer<S,B> {
     }
 }
 
-impl<S: Sample,B> DerefMut for Buffer<S,B> {
+impl<S: Sample+Default,B> DerefMut for Buffer<S,B> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.buffer
     }
@@ -171,7 +166,7 @@ macro_rules! ImplBuffer {
     ($alias:ident, $buffer_ty:ty $(, $lifetime:lifetime)?) => {
         /// Implement `From<(interleaved,n_channels,$buffer_ty)>` for Buffer
         impl<$($lifetime,)?S> From<(bool,NChannels,$buffer_ty)> for Buffer<S,$buffer_ty>
-            where S: Sample,
+            where S: Sample+Default,
         {
             fn from(v: (bool,NChannels,$buffer_ty)) -> Buffer<S,$buffer_ty> {
                 Buffer {
@@ -186,7 +181,7 @@ macro_rules! ImplBuffer {
         pub type $alias<$($lifetime,)?S> = Buffer<S,$buffer_ty>;
 
         impl<$($lifetime,)?S> BufferView for Buffer<S,$buffer_ty>
-            where S: Sample,
+            where S: Sample+Default,
         {
             type Sample = S;
 
@@ -256,7 +251,7 @@ ImplBuffer!{SliceBuffer, &'a mut [S], 'a}
 ImplBuffer!{VecBuffer, Vec<S>}
 
 
-impl<S: Sample> Buffer<S,Vec<S>> {
+impl<S: Sample+Default> Buffer<S,Vec<S>> {
     /// New empty buffer.
     pub fn new(interleaved: bool, n_channels: NChannels) -> Self {
         Buffer {
