@@ -7,6 +7,7 @@ use petgraph as pg;
 use petgraph::stable_graph as sg;
 
 use crate::data::{Buffer,BufferView,SliceBuffer,Sample,NChannels,NSamples,NFrames};
+use crate::data::samples::fill_samples;
 
 use super::controller::*;
 use super::dsp::{DSP,BoxedDSP};
@@ -43,10 +44,9 @@ impl<S,PS> Unit<S,PS>
     {
         Unit {
             order: 0,
-            last_frame_time: 0,
+            mapped: false,
             processing: AtomicBool::new(false),
             dsp: Box::new(dsp),
-            mapped: false,
         }
     }
 
@@ -244,7 +244,8 @@ impl<S,PS> Graph<S,PS>
             }
             else {
                 let mut node_buffer = node.buffer(&mut self.buffers, buffer_len);
-                node.dsp.process_audio(scope, input, Some(&mut node_buffer));
+                let n = node.dsp.process_audio(scope, input, Some(&mut node_buffer));
+                fill_samples(&mut node_buffer.as_slice_mut()[n..], S::default());
             }
             node.processing.store(false, Ordering::Relaxed);
             order += 1;

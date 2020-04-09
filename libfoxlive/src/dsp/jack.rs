@@ -75,13 +75,16 @@ impl DSP for JackInput {
     type Scope=j::ProcessScope;
 
     fn process_audio(&mut self, scope: &Self::Scope, _input: Option<&dyn BufferView<Sample=Self::Sample>>,
-                     output: Option<&mut dyn BufferView<Sample=Self::Sample>>)
+                     output: Option<&mut dyn BufferView<Sample=Self::Sample>>) -> usize
     {
         let output = output.expect("output not provided");
+        let mut n_samples = 0;
         for (index, port) in self.ports.iter().enumerate() {
             let slice = port.as_slice(scope);
-            add_samples_inplace(output.channel_mut(index as NChannels).unwrap(), slice.iter());
+            merge_samples(output.channel_mut(index as NChannels).unwrap(), slice.iter());
+            n_samples += slice.len();
         }
+        n_samples
     }
 
     fn n_channels(&self) -> NChannels {
@@ -119,14 +122,15 @@ impl DSP for JackOutput {
     type Scope=j::ProcessScope;
 
     fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn BufferView<Sample=Self::Sample>>,
-                     _output: Option<&mut dyn BufferView<Sample=Self::Sample>>)
+                     _output: Option<&mut dyn BufferView<Sample=Self::Sample>>) -> usize
     {
         let input = input.expect("input not provided");
         for (index, port) in self.ports.iter_mut().enumerate() {
             let slice = port.as_mut_slice(scope);
             // map_samples_inplace(slice, &|s| at.sin());
-            copy_samples_inplace(slice.iter_mut(), input.channel(index as NChannels).unwrap());
+            copy_samples(slice.iter_mut(), input.channel(index as NChannels).unwrap());
         }
+        0
     }
 
     fn n_channels(&self) -> NChannels {

@@ -1,60 +1,17 @@
 use std::marker::PhantomData;
 
-use smallvec::SmallVec;
 use ringbuf::*;
 
 use crate as libfoxlive;
 use libfoxlive_derive::foxlive_controller;
-use crate::data::{BufferView,NChannels,NSamples,Sample,SampleRate,VecBuffer};
+use crate::data::{BufferView,NChannels,NSamples,Sample,SampleRate};
 use crate::data::time::*;
-use crate::format::{Error,Reader,StreamInfo};
+use crate::format::{Error,StreamInfo};
 use crate::format::reader::*;
-use crate::format::futures::*;
 
 use super::controller::*;
 use super::dsp::DSP;
 use super::graph::ProcessScope;
-
-
-struct MediaReaderHandler<S: Sample> {
-    // cache buffer
-    cache: Producer<S>,
-    // max cache size before fetching data
-    fetch_at: usize,
-    // fetch this sample count
-    fetch_count: usize,
-    // fetching
-    fetching: bool
-}
-
-impl<S: Sample> MediaReaderHandler<S> {
-    fn new(cache: Producer<S>) -> Self {
-        let cap = cache.capacity();
-        Self {
-            cache: cache,
-            fetch_at: (cap / 8),
-            fetch_count: 1024*10,
-            fetching: false,
-        }
-    }
-}
-
-impl<S: Sample> ReaderHandler for MediaReaderHandler<S> {
-    type Sample = S;
-
-    fn data_received(&mut self, buffer: &mut VecBuffer<S>) {
-        self.cache.push_slice(buffer.as_slice());
-        self.fetching = false;
-    }
-
-    fn poll(&mut self, reader: &mut Reader<Self::Sample>) -> Poll {
-        if !self.fetching && self.cache.len() <= self.fetch_at as usize {
-            reader.fetch(self.fetch_count, false);
-            self.fetching = true;
-        }
-        Poll::Pending
-    }
-}
 
 
 /// View over a media
@@ -63,11 +20,14 @@ pub struct MediaView<S,PS>
     where S: Sample+IntoControlValue,
           PS: ProcessScope,
 {
+    /// Reader
+    pub reader: SharedReader<S>,
+    /// Cached data as ringbuffer consumer
     cache: Consumer<S>,
     /// Amplification
     amp: S,
     /// Stream information
-    infos: StreamInfo,
+    pub infos: Option<StreamInfo>,
     /// Reading position
     pos: NSamples,
     phantom: PhantomData<PS>,
@@ -77,26 +37,37 @@ impl<S,PS> MediaView<S,PS>
     where S: Sample+IntoControlValue,
           PS: ProcessScope,
 {
-    pub fn new<P>(path: P, rate: SampleRate, cache_duration: Duration)
-        -> Result<(Self,Box<Future>),Error>
-        where P: Into<String>
+    pub fn new(rate: SampleRate, cache_duration: Duration) -> Self
     {
-        let path = path.into();
-        Reader::open(&path, None, rate, None).map(|mut reader| {
-            let infos = reader.stream().infos();
-            let cache_size = ts_to_samples(cache_duration, rate) * infos.n_channels as NSamples;
+        let cache_size = ts_to_samples(cache_duration, rate) * 2 as NSamples;
+        let (prod, cons) = RingBuffer::new(cache_size as usize).split();
 
-            let (prod, cons) = RingBuffer::new(cache_size as usize).split();
-            let handler = MediaReaderHandler::new(prod);
-            reader.start_read(handler).unwrap();
-            (Self {
-                cache: cons,
-                amp: S::identity(),
-                pos: 0,
-                infos: infos,
-                phantom: PhantomData,
-            }, reader.boxed())
-        })
+        let reader = SharedReader::new(prod, rate, None);
+        Self {
+            reader: reader,
+            cache: cons,
+            amp: S::identity(),
+            pos: 0,
+            infos: None,
+            phantom: PhantomData
+        }
+    }
+
+    pub fn open<P: Into<String>>(&mut self, path: P) -> Result<(), Error> {
+        let mut reader = self.reader.write().unwrap();
+        match reader.open(&path.into(), None) {
+            Ok(()) => {
+                self.infos = Some(reader.stream().unwrap().infos());
+                Ok(())
+            },
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn seek(&mut self, pos: Duration) -> Result<Duration, Error> {
+        // TODO: empty cache buffer?
+        let mut reader = self.reader.write().unwrap();
+        reader.seek(pos)
     }
 }
 
@@ -108,23 +79,32 @@ impl<S,PS> DSP for MediaView<S,PS>
     type Sample = S;
     type Scope = PS;
 
-    fn process_audio(&mut self, scope: &Self::Scope, _input: Option<&dyn BufferView<Sample=Self::Sample>>,
-                     output: Option<&mut dyn BufferView<Sample=Self::Sample>>)
+    fn process_audio(&mut self, _scope: &Self::Scope, _input: Option<&dyn BufferView<Sample=Self::Sample>>,
+                     output: Option<&mut dyn BufferView<Sample=Self::Sample>>) -> usize
     {
         let output = output.unwrap();
-        // ensure output is interleaved data buffer, since reading does
+        // ensure output is interleaved data buffer, since reading is
         output.set_interleaved(true);
 
-        let (cache, n_channels) = (&mut self.cache, self.infos.n_channels);
+        let (cache, n_channels) = (&mut self.cache, self.infos.as_ref().unwrap().n_channels);
         let count = (cache.remaining() - cache.remaining() % n_channels as usize)
                     .min(output.len());
         let slice = output.as_slice_mut();
 
         let count = cache.pop_slice(&mut slice[0..count]);
+        for i in 0..count {
+            slice[i] = slice[i] * self.amp;
+        }
         self.pos += count;
+        count
     }
 
-    fn n_channels(&self) -> NChannels { self.infos.n_channels }
+    fn n_channels(&self) -> NChannels {
+        match self.infos {
+            Some(ref infos) => infos.n_channels,
+            None => 0,
+        }
+    }
     fn is_source(&self) -> bool { true }
 }
 

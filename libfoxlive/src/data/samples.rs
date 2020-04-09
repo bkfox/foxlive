@@ -121,9 +121,16 @@ pub type SampleSlice<'a,T> = &'a[T];
 pub type SampleSliceMut<'a,T> = &'a mut[T];
 
 
+pub fn fill_samples<S: Sample>(a: SampleSliceMut<S>, value: S)
+{
+    for s in a.iter_mut() {
+        *s = value;
+    }
+}
+
 /// Map frames together and update `a` with resulting values.
 // FIXME: func arg by ref or copy?
-pub fn map_samples_inplace<S: Sample>(a: SampleSliceMut<S>, func: &impl Fn(S) -> S)
+pub fn map_samples<S: Sample>(a: SampleSliceMut<S>, func: &impl Fn(S) -> S)
 {
     for s in a.iter_mut() {
         *s = func(*s);
@@ -132,7 +139,7 @@ pub fn map_samples_inplace<S: Sample>(a: SampleSliceMut<S>, func: &impl Fn(S) ->
 
 
 /// Zip-Map frames together and update `a` with resulting values.
-pub fn copy_samples_inplace<'a,S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>)
+pub fn copy_samples<'a,S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>)
 {
     for (s_a, s_b) in a.zip(b) {
         *s_a = *s_b;
@@ -141,7 +148,7 @@ pub fn copy_samples_inplace<'a,S: Sample>(a: impl Iterator<Item=&'a mut S>, b: i
 
 
 /// Zip-Map frames together and update `a` with resulting values.
-pub fn zip_map_samples_inplace<'a, S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>, func: &impl Fn(S, S) -> S)
+pub fn zip_map_samples<'a, S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>, func: &impl Fn(S, S) -> S)
 {
     for (s_a, s_b) in a.zip(b) {
         *s_a = func(*s_a, *s_b);
@@ -149,26 +156,26 @@ pub fn zip_map_samples_inplace<'a, S: Sample>(a: impl Iterator<Item=&'a mut S>, 
 }
 
 /// Samples addition between two slices and
-pub fn add_samples_inplace<'a,S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>) {
-    zip_map_samples_inplace(a, b, &|a: S, b: S| a.add(b))
+pub fn merge_samples<'a,S: Sample>(a: impl Iterator<Item=&'a mut S>, b: impl Iterator<Item=&'a S>) {
+    zip_map_samples(a, b, &|a: S, b: S| a.add(b))
 }
 
 
 #[cfg(test)]
 mod tests {
-    /// Test: map_samples_inplace
+    /// Test: map_samples
     #[test]
-    fn map_samples_inplace() {
+    fn map_samples() {
         let mut a = [0, 1, 2];
-        super::map_samples_inplace(&mut a, &|s| s*2);
+        super::map_samples(&mut a, &|s| s*2);
         assert_eq!(a, [0, 2, 4]);
     }
 
-    /// Test: add_samples_inplace, zip_map_samples_inplace
+    /// Test: merge_samples, zip_map_samples
     #[test]
-    fn add_samples_inplace() {
+    fn merge_samples() {
         let (mut a, b) = ([1, 2, 3], [1, 2, 3]);
-        super::add_samples_inplace(a.iter_mut(), b.iter());
+        super::merge_samples(a.iter_mut(), b.iter());
 
         assert_eq!(a, [2, 4, 6]);
     }

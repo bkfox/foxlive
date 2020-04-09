@@ -10,8 +10,11 @@ pub trait DSP: Any+Controller {
     type Sample: Sample;
     type Scope: ProcessScope;
 
+    /// Process audio using provided input and output. Return total number of written samples
+    /// nevermind the channel.
+    /// Sink always return 0 since they don't write to provided output.
     fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn BufferView<Sample=Self::Sample>>,
-                     output: Option<&mut dyn BufferView<Sample=Self::Sample>>);
+                     output: Option<&mut dyn BufferView<Sample=Self::Sample>>) -> usize;
 
     /// Return number of handled channels
     fn n_channels(&self) -> NChannels {

@@ -13,7 +13,7 @@ use super::dsp::DSP;
 struct ClosureDSP<S,PS,F>
     where S: 'static+Sample,
           PS: 'static+ProcessScope,
-          F: 'static+FnMut(&PS, Option<&dyn BufferView<Sample=S>>, Option<&mut dyn BufferView<Sample=S>>)
+          F: 'static+FnMut(&PS, Option<&dyn BufferView<Sample=S>>, Option<&mut dyn BufferView<Sample=S>>) -> usize
 {
     n_channels: NChannels,
     is_source: bool,
@@ -25,7 +25,7 @@ struct ClosureDSP<S,PS,F>
 impl<S,PS,F> ClosureDSP<S,PS,F>
     where S: 'static+Sample,
           PS: 'static+ProcessScope,
-          F: 'static+FnMut(&PS, Option<&dyn BufferView<Sample=S>>, Option<&mut dyn BufferView<Sample=S>>)
+          F: 'static+FnMut(&PS, Option<&dyn BufferView<Sample=S>>, Option<&mut dyn BufferView<Sample=S>>) -> usize
 {
     fn new(n_channels: NChannels, is_source: bool, is_sink: bool, closure: F) -> Self {
         Self {
@@ -42,13 +42,13 @@ impl<S,PS,F> ClosureDSP<S,PS,F>
 impl<S,PS,F> DSP for ClosureDSP<S,PS,F>
     where S: 'static+Sample,
           PS: 'static+ProcessScope,
-          F: 'static+FnMut(&PS, Option<&dyn BufferView<Sample=S>>, Option<&mut dyn BufferView<Sample=S>>)
+          F: 'static+FnMut(&PS, Option<&dyn BufferView<Sample=S>>, Option<&mut dyn BufferView<Sample=S>>) -> usize
 {
     type Sample = S;
     type Scope = PS;
 
     fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn BufferView<Sample=Self::Sample>>,
-                     output: Option<&mut dyn BufferView<Sample=Self::Sample>>)
+                     output: Option<&mut dyn BufferView<Sample=Self::Sample>>) -> usize
     {
         (self.closure)(scope, input, output)
     }

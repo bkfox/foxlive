@@ -1,10 +1,12 @@
 //! Provide media file reader.
-use std::ops::Deref;
+use std::ops::{Deref};
 use std::ptr::null_mut;
 use std::time::Duration;
+use std::sync::*;
 
 use core::pin::Pin;
 use futures;
+use ringbuf::Producer;
 
 use crate::data::*;
 
@@ -22,8 +24,9 @@ use super::stream::{Stream,StreamId};
 pub trait ReaderHandler : 'static+Unpin {
     type Sample: Sample;
 
-    /// Data have been received
-    fn data_received(&mut self, buffer: &mut VecBuffer<Self::Sample>);
+    /// Data have been received, `has_more` indicates if there is still data to be
+    /// decoded (end of file not reached).
+    fn data_received(&mut self, buffer: &mut VecBuffer<Self::Sample>, has_more: bool);
 
     /// Called at each reader's poll in order to do stuff (seek, request data, etc)
     /// It returns Poll::Ready when Reader is no needed anymore.
@@ -31,26 +34,19 @@ pub trait ReaderHandler : 'static+Unpin {
 }
 
 
-/// Audio file reader, reading data in an interleaved buffer.
-///
-/// By itself it doesn't handle multithreading, but the provided
-/// ReaderHandler can do the thing.
-pub struct Reader<S>
+pub struct ReaderContext<S>
     where S: Sample,
 {
     pub format: FormatContext,
-    pub buffer: VecBuffer<S>,
-    stream_id: StreamId,
-    fetch_count: NSamples,
-    codec: CodecContext,
-    resampler: Resampler<S>,
-    frame: *mut ffi::AVFrame,
-    packet: *mut ffi::AVPacket,
-    handler: Option<Box<dyn ReaderHandler<Sample=S>>>,
+    pub codec: CodecContext,
+    pub resampler: Resampler<S>,
+    pub stream_id: StreamId,
+    pub frame: *mut ffi::AVFrame,
+    pub packet: *mut ffi::AVPacket,
 }
 
 
-impl<S> Reader<S>
+impl<S> ReaderContext<S>
     where S: Sample,
 {
     /// Create a new media reader.
@@ -76,148 +72,27 @@ impl<S> Reader<S>
                 Err(e) => return Err(e),
             };
 
-            let n_channels = codec.channels as NChannels;
             let stream_id = stream.index;
             Ok(Self {
                 format: format,
-                buffer: VecBuffer::new(true, n_channels),
                 stream_id: stream_id,
-                fetch_count: 0,
                 codec: codec,
                 resampler: resampler,
                 frame: unsafe { ffi::av_frame_alloc() },
                 packet: unsafe { ffi::av_packet_alloc() },
-                handler: None,
             })
         }
         else { Err(FmtError!(Reader, "no audio stream found")) }
     }
-
-    /// Create a new media reader for the provided file url
-    pub fn open(path: &str, stream_id: Option<StreamId>, rate: SampleRate, layout: Option<ChannelLayout>) -> Result<Self, Error> {
-        FormatContext::open_input(path)
-            .and_then(|format| Self::new(format, stream_id, rate, layout))
-    }
-
-    /// Return object as boxed future
-    pub fn boxed(self) -> Box<Future> {
-        Box::new(self)
-    }
-
-    /// Current stream being decoded
-    pub fn stream<'a>(&'a self) -> Stream<'a> {
-        self.format.stream(self.stream_id).unwrap()
-    }
-
-    /// Start reading by providing a reader
-    pub fn start_read(&mut self, handler: impl ReaderHandler<Sample=S>) -> Result<(), Error> {
-        if self.handler.is_some() {
-            Err(Error::reader("already reading"))
-        }
-        else {
-            self.handler = Some(Box::new(handler));
-            Ok(())
-        }
-    }
-
-    /// Poll
-    pub fn poll_once(&mut self) -> Poll {
-        let handler = self.handler.take();
-        let r = match handler {
-            None => Poll::Pending,
-            Some(mut handler) => {
-                let r = handler.poll(self);
-                self.handler = Some(handler);
-                if let Poll::Pending = r {
-                    if self.fetch_count == 0 {
-                        Poll::Pending
-                    }
-                    else {
-                        self.read_packet()
-                    }
-                }
-                else { r }
-            }
-        };
-        r
-    }
-
-    /// Read a single packet
-    pub fn read_packet(&mut self) -> Poll {
-        let r = unsafe { ffi::av_read_frame(self.format.context, self.packet) };
-        if r >= 0 {
-            let mut r = self.codec.send_packet(self.packet);
-            if let Poll::Pending = r {
-                r = self.receive_frame();
-                if let Poll::Ready(Ok(_)) = r {
-                    r = Poll::Pending;
-
-                    // requested cache filled: send to handler and reset buffers
-                    if self.buffer.n_samples() >= self.fetch_count {
-                        self.data_received();
-                    }
-                }
-            }
-            unsafe { ffi::av_packet_unref(self.packet); }
-            r
-        }
-        else {
-            // close codec (FIXME: what if we seek afterward?) and send the remaining buffer data
-            self.codec.send_packet(null_mut());
-            self.data_received();
-            ToPoll!(Reader, r)
-        }
-    }
-
-    /// Data received, send handler and update self's stuff.
-    fn data_received(&mut self) {
-        // pos = self.frame.pkt_pts + self.frame.pkt_duration
-        // timebase = TimeBase::from(self.stream().time_base)
-        // pos = timebase.ts_to_duration(self.frame.pkt_pts + self.frame.pkt_duration)
-        let handler = self.handler.as_mut();
-        handler.unwrap().data_received(&mut self.buffer);
-        self.fetch_count = 0;
-        self.buffer.clear();
-    }
-
-    /// Receive a frame from codec, return `codec.receive_frame()` result.
-    fn receive_frame(&mut self) -> Poll {
-        let r = self.codec.receive_frame(self.frame);
-        if let Poll::Ready(Ok(_)) = r {
-            let frame = unsafe { &*self.frame };
-            self.resampler.convert(&mut self.buffer.buffer, frame);
-        }
-        r
-    }
-
-    /// Request provided sample count (added to current count if add is `true`).
-    pub fn fetch(&mut self, count: NSamples, add: bool) {
-        match add {
-            true => self.fetch_count += count,
-            false => self.fetch_count = count,
-        }
-    }
-
-    /// Seek to position (as resampled position), returning seeked position
-    /// in case of success.
-    pub fn seek(&mut self, pos: Duration) -> Result<Duration, Error> {
-        let tb = self.stream().time_base;
-        let real_pos = TimeBase::from((tb.num, tb.den)).duration_to_ts(pos);
-        // 4 = AVSEEK_FLAG_ANY
-        let r = unsafe { ffi::av_seek_frame(self.format.context, self.stream_id, real_pos, 4) };
-        if r >= 0 {
-            Ok(pos)
-        }
-        else {
-            Err(Error::reader(av_strerror(r)))
-        }
-    }
 }
 
-impl<S> Drop for Reader<S>
+
+impl<S> Drop for ReaderContext<S>
     where S: Sample,
 {
     fn drop(&mut self) {
+        self.codec.send_packet(null_mut());
+
         if !self.frame.is_null() {
             unsafe { ffi::av_frame_free(&mut self.frame) };
         }
@@ -228,13 +103,166 @@ impl<S> Drop for Reader<S>
     }
 }
 
-impl<S> Deref for Reader<S>
+
+impl<S> Deref for ReaderContext<S>
     where S: Sample,
 {
     type Target = FormatContext;
 
     fn deref(&self) -> &Self::Target {
         &self.format
+    }
+}
+
+
+/// Audio file reader, reading data in an interleaved buffer.
+///
+/// By itself it doesn't handle multithreading, but the provided
+/// ReaderHandler can do the thing.
+pub struct Reader<S>
+    where S: Sample,
+{
+    context: Option<ReaderContext<S>>,
+    cache: Producer<S>,
+    buffer: VecBuffer<S>,
+    rate: SampleRate,
+    layout: Option<ChannelLayout>,
+}
+
+
+impl<S> Reader<S>
+    where S: Sample,
+{
+    /// Create a new media reader.
+    pub fn new(cache: Producer<S>, rate: SampleRate, layout: Option<ChannelLayout>) -> Self
+    {
+        Self {
+            context: None,
+            cache: cache,
+            buffer: VecBuffer::new(true, 1),
+            rate: rate,
+            layout: layout,
+        }
+    }
+
+    /// Open file for reading, close previously opened file
+    pub fn open(&mut self, path: &str, stream_id: Option<StreamId>) -> Result<(), Error> {
+        if self.context.is_some() {
+            self.close();
+        }
+
+        FormatContext::open_input(path)
+            .and_then(|format| ReaderContext::new(format, stream_id, self.rate, self.layout))
+            .and_then(|context| {
+                self.context = Some(context);
+                Ok(())
+            })
+    }
+
+    pub fn close(&mut self) {
+        if self.context.is_some() {
+            self.buffer.clear();
+            self.context = None;
+        }
+    }
+
+    /// Return object as boxed future
+    pub fn into_future(self) -> Box<Future> {
+        Box::new(self)
+    }
+
+    /// Current stream being decoded
+    pub fn stream<'a>(&'a self) -> Option<Stream<'a>> {
+        if self.context.is_some() {
+            let context = self.context.as_ref().unwrap();
+            context.format.stream(context.stream_id)
+        }
+        else { None }
+    }
+
+    /// Poll reader.
+    ///
+    /// Panics if there is no assigned handler because once the reader becomes
+    /// a future, there is no way to assign one.
+    pub fn poll_once(&mut self) -> Poll {
+        if self.context.is_some() && self.cache.remaining() > self.cache.len() / 2 {
+            pending_or_err(self.read_packet())
+        }
+        else { Poll::Pending }
+    }
+
+    /// Read a single packet
+    fn read_packet(&mut self) -> Poll {
+        let ctx = self.context.as_ref().unwrap();
+        let r = unsafe { ffi::av_read_frame(ctx.format.context, ctx.packet) };
+        if r >= 0 {
+            let mut r = ctx.codec.send_packet(ctx.packet);
+            if let Poll::Pending = r {
+                r = self.receive_frame();
+                if let Poll::Ready(Ok(_)) = r {
+                    r = Poll::Pending;
+
+                    // requested cache filled: send to handler and reset buffers
+                    if self.buffer.len() > self.cache.remaining() / 2 {
+                        self.data_received(true);
+                    }
+                }
+            }
+            let ctx = self.context.as_ref().unwrap();
+            unsafe { ffi::av_packet_unref(ctx.packet); }
+            r
+        }
+        else {
+            self.data_received(false);
+            ToPoll!(Reader, r)
+        }
+    }
+
+    /// Data received, send handler and update self's stuff.
+    fn data_received(&mut self, has_more: bool) {
+        // pos = self.frame.pkt_pts + self.frame.pkt_duration
+        // timebase = TimeBase::from(self.stream().time_base)
+        // pos = timebase.ts_to_duration(self.frame.pkt_pts + self.frame.pkt_duration)
+
+        let count = self.cache.push_slice(&self.buffer);
+        if self.buffer.len() == count {
+            self.buffer.clear();
+        }
+        else {
+            self.buffer.drain(0..count).count();
+        }
+    }
+
+    /// Receive a frame from codec, return `codec.receive_frame()` result.
+    fn receive_frame(&mut self) -> Poll {
+        let ctx = self.context.as_mut().unwrap();
+        let r = ctx.codec.receive_frame(ctx.frame);
+        if let Poll::Ready(Ok(_)) = r {
+            let frame = unsafe { &*ctx.frame };
+            ctx.resampler.convert(&mut self.buffer.buffer, frame);
+        }
+        r
+    }
+
+    /// Seek to position (as resampled position), returning seeked position
+    /// in case of success.
+    ///
+    /// Internal buffer is cleared, but not shared cache which must be cleared
+    /// manually.
+    pub fn seek(&mut self, pos: Duration) -> Result<Duration, Error> {
+        if let Some(ref ctx) = self.context {
+            let tb = self.stream().unwrap().time_base;
+            let real_pos = TimeBase::from((tb.num, tb.den)).duration_to_ts(pos);
+            // 4 = AVSEEK_FLAG_ANY
+            let r = unsafe { ffi::av_seek_frame(ctx.format.context, ctx.stream_id, real_pos, 4) };
+            if r >= 0 {
+                Ok(pos)
+            }
+            else {
+                Err(Error::reader(av_strerror(r)))
+            }
+        }
+        else { Err(Error::reader("not opened")) }
     }
 }
 
@@ -251,6 +279,61 @@ impl<S> futures::Future for Reader<S>
         }
         r
     }
+}
+
+
+/// Arced reader with an rwlock in order to make it shareable around threads
+#[derive(Clone)]
+pub struct SharedReader<S: Sample> {
+    pub reader: Arc<RwLock<Reader<S>>>,
+}
+
+
+impl<S: Sample> SharedReader<S> {
+    pub fn new(cache: Producer<S>, rate: SampleRate, layout: Option<ChannelLayout>) -> Self {
+        Self::from(Reader::new(cache, rate, layout))
+    }
+
+    pub fn read(&self) -> LockResult<RwLockReadGuard<Reader<S>>> {
+        self.reader.read()
+    }
+
+    pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<Reader<S>>> {
+        self.reader.try_read()
+    }
+
+    pub fn write(&self) -> LockResult<RwLockWriteGuard<Reader<S>>> {
+        self.reader.write()
+    }
+
+    pub fn try_write(&self) -> TryLockResult<RwLockWriteGuard<Reader<S>>> {
+        self.reader.try_write()
+    }
+}
+
+impl<S: Sample> From<Reader<S>> for SharedReader<S> {
+    fn from(reader: Reader<S>) -> Self {
+        Self { reader: Arc::new(RwLock::new(reader)) }
+    }
+}
+
+impl<S: Sample> futures::Future for SharedReader<S> {
+    type Output = PollValue;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut futures::task::Context) -> Poll {
+        let reader = self.get_mut().reader.write();
+        match reader {
+            Ok(mut reader) => {
+                let r = reader.poll_once();
+                if let Poll::Pending = r {
+                    cx.waker().clone().wake();
+                }
+                r
+            },
+            Err(err) => Poll::Ready(Err(Error::reader("reader poisoned"))),
+        }
+    }
+
 }
 
 

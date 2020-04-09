@@ -9,6 +9,14 @@ pub type Poll = futures::task::Poll<PollValue>;
 pub type Future = dyn futures::Future<Output=PollValue>+Unpin;
 
 
+/// Transform Poll::Ready(Ok) to Poll::Pending
+pub fn pending_or_err(poll: Poll) -> Poll {
+    match poll {
+        Poll::Ready(Ok(_)) => Poll::Pending,
+        _ => poll
+    }
+}
+
 /// Return a Poll<Result<(), Error>> from provided ffmpeg function result
 macro_rules! ToPoll {
     ($err:ident, $r: ident) => {{

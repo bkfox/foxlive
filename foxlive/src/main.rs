@@ -18,14 +18,13 @@ fn main() {
     let client = j::Client::new("foxlive", jack::ClientOptions::NO_START_SERVER)
                      .unwrap().0;
     let mut graph = Graph::new();
-    let mut media = MediaView::new("./test.opus", 48000, Duration::from_millis(500));
+    let mut media = MediaView::new(48000, Duration::from_millis(500));
 
-    if let Err(err) = media {
-        println!("could not open media: {:?}", err);
-        return;
-    }
+    media.open("./test.opus").expect("can not open file");
 
-    let (media, reader) = media.unwrap();
+    let reader = media.reader.clone();
+
+
     let media_view = graph.add_node(media);
     let master = graph.add_child(media_view, JackOutput::acquire(&client, "master", 2));
     graph.updated();
