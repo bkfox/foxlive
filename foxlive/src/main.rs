@@ -1,4 +1,5 @@
 #![feature(unboxed_closures)]
+use std::convert::TryInto;
 use std::sync::{Arc,RwLock};
 use std::time::{Duration,SystemTime};
 
@@ -26,7 +27,7 @@ fn main() {
 
 
     let media_view = graph.add_node(media);
-    let master = graph.add_child(media_view, JackOutput::acquire(&client, "master", 2));
+    graph.add_child(media_view, JackOutput::acquire(&client, "master", 2));
     graph.updated();
 
     let graph = Arc::new(RwLock::new(graph));
@@ -34,13 +35,16 @@ fn main() {
 
     let mut now = SystemTime::now();
     let process_handler = j::ClosureProcessHandler::new(
-        move |client: &j::Client, scope: &j::ProcessScope| {
+        move |_client: &j::Client, scope: &j::ProcessScope| {
             let mut graph = graph_.write().unwrap();
             graph.process_nodes(scope);
 
             if let Ok(elapsed) = now.elapsed() {
-                if elapsed.as_secs() > 10 {
-                    graph.set_control(0, ControlValue::Index(0));
+                if elapsed.as_secs() > 3 {
+                    let amp : f32 = graph.get_control(0).unwrap().try_into().unwrap();
+                    graph.set_control(0, ControlValue::F32(amp * 0.90));
+
+                    graph.set_control(1, ControlValue::Duration(Duration::from_secs(5)));
                     now = SystemTime::now();
                 }
             }

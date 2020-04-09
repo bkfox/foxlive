@@ -25,10 +25,12 @@ pub struct MediaView<S,PS>
     /// Cached data as ringbuffer consumer
     cache: Consumer<S>,
     /// Amplification
+    #[control(I32(0,0,0), "test")]
     amp: S,
     /// Stream information
     pub infos: Option<StreamInfo>,
     /// Reading position
+    #[control(Index, "pos", get_pos, seek)]
     pos: NSamples,
     phantom: PhantomData<PS>,
 }
@@ -65,9 +67,14 @@ impl<S,PS> MediaView<S,PS>
     }
 
     pub fn seek(&mut self, pos: Duration) -> Result<Duration, Error> {
-        // TODO: empty cache buffer?
         let mut reader = self.reader.write().unwrap();
+        self.pos = ts_to_samples(pos, reader.rate());
+        self.cache.for_each(|_| {});
         reader.seek(pos)
+    }
+
+    fn get_pos(&self) -> Duration {
+        samples_to_ts(self.pos, self.reader.read().unwrap().rate())
     }
 }
 

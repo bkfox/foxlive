@@ -171,6 +171,11 @@ impl<S> Reader<S>
         Box::new(self)
     }
 
+    /// Get current sample rate
+    pub fn rate(&self) -> SampleRate {
+        self.rate
+    }
+
     /// Current stream being decoded
     pub fn stream<'a>(&'a self) -> Option<Stream<'a>> {
         if self.context.is_some() {

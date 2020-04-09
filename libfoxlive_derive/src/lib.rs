@@ -77,7 +77,7 @@ fn read_control_attr(field: String, attr: &Attribute) -> Option<(Expr, String, E
                             if let syn::NestedMeta::Meta(ref meta) = args[n] {
                                 let meta = meta.to_token_stream();
                                 let ident = parse2::<Ident>(meta).unwrap().to_string();
-                                set = parse_str::<Expr>(&format!("self.{}(value).map(|r| r.into())", ident)).ok();
+                                set = parse_str::<Expr>(&format!("self.{}(value).map(|r| r.into()).or(Err(()))", ident)).ok();
                                 // n += 1;
                             }
                             else { panic!("invalid set argument"); }

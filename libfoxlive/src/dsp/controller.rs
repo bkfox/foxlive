@@ -1,4 +1,7 @@
 use std::convert::TryFrom;
+use std::time::Duration;
+
+use crate::data::{NSamples};
 
 pub type ControlIndex = u32;
 
@@ -12,6 +15,7 @@ pub enum ControlType {
     I32(i32,i32,i32),
     F32(f32,f32,f32),
     F64(f64,f64,f64),
+    Duration,
     Index,
 }
 
@@ -25,6 +29,7 @@ pub enum ControlValue {
     I32(i32),
     F32(f32),
     F64(f64),
+    Duration(Duration),
     Index(usize),
     // SelectionList
 }
@@ -62,7 +67,8 @@ ImplControlValue!{ I16, i16 }
 ImplControlValue!{ I32, i32 }
 ImplControlValue!{ F32, f32 }
 ImplControlValue!{ F64, f64 }
-ImplControlValue!{ Index, usize }
+ImplControlValue!{ Duration, Duration }
+ImplControlValue!{ Index, NSamples }
 
 
 /// Metadata as (key, value)
