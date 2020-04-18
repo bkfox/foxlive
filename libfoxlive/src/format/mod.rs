@@ -17,7 +17,6 @@ pub mod codec;
 pub mod stream;
 pub mod format;
 pub mod reader;
-pub mod media;
 
 
 pub use error::Error;

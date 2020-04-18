@@ -3,22 +3,22 @@ use std::marker::PhantomData;
 use ringbuf::*;
 
 use crate as libfoxlive;
-use libfoxlive_derive::foxlive_controller;
+use libfoxlive_derive::object;
 use crate::data::*;
 use crate::data::time::*;
 use crate::format::{Error,StreamInfo};
 use crate::format::reader::*;
+use crate::rpc::*;
 
-use super::controller::*;
 use super::dsp::DSP;
 use super::graph::ProcessScope;
 
 
 /// View over a media
-#[foxlive_controller("media")]
+#[object("media")]
 pub struct MediaView<S,PS>
-    where S: Sample+Default+IntoSampleFmt+Unpin+IntoControlValue,
-          S::Float: IntoControlValue,
+    where S: Sample+Default+IntoSampleFmt+Unpin+IntoValue,
+          S::Float: IntoValue,
           PS: ProcessScope,
 {
     /// Reader. The only reason it is an Arc'ed is that it should be usable
@@ -28,19 +28,19 @@ pub struct MediaView<S,PS>
     /// Cached data as ringbuffer consumer
     cache: Consumer<S>,
     /// Amplification
-    #[control(I32(0,0,0), "amp")]
+    #[field(I32(0,0,0), "amp")]
     amp: S::Float,
     /// Reading position
-    #[control(Duration, "pos", get_pos, seek)]
-    pos: NSamples,
+    #[field(Duration, "pos", tell, seek)]
+    pos: Duration,
     /// Stream information
     pub infos: Option<StreamInfo>,
     phantom: PhantomData<PS>,
 }
 
 impl<S,PS> MediaView<S,PS>
-    where S: Sample+Default+IntoSampleFmt+Unpin+IntoControlValue,
-          S::Float: IntoControlValue,
+    where S: Sample+Default+IntoSampleFmt+Unpin+IntoValue,
+          S::Float: IntoValue,
           PS: ProcessScope,
 {
     pub fn new(rate: SampleRate, cache_duration: Duration) -> Self
@@ -53,7 +53,7 @@ impl<S,PS> MediaView<S,PS>
             reader: reader,
             cache: cons,
             amp: S::identity(),
-            pos: 0,
+            pos: Duration::new(0,0),
             infos: None,
             phantom: PhantomData
         }
@@ -72,20 +72,23 @@ impl<S,PS> MediaView<S,PS>
 
     pub fn seek(&mut self, pos: Duration) -> Result<Duration, Error> {
         let mut reader = self.reader.write().unwrap();
-        self.pos = ts_to_samples(pos, reader.rate());
         self.cache.for_each(|_| {});
-        reader.seek(pos)
+        let r = reader.seek(pos);
+        if let Ok(pos) = r {
+            self.pos = pos;
+        }
+        r
     }
 
-    fn get_pos(&self) -> Duration {
-        samples_to_ts(self.pos, self.reader.read().unwrap().rate())
+    fn tell(&self) -> Duration {
+        self.pos
     }
 }
 
 
 impl<S,PS> Drop for MediaView<S,PS>
-    where S: Sample+Default+IntoSampleFmt+Unpin+IntoControlValue,
-          S::Float: IntoControlValue,
+    where S: Sample+Default+IntoSampleFmt+Unpin+IntoValue,
+          S::Float: IntoValue,
           PS: ProcessScope,
 {
     fn drop(&mut self) {
@@ -96,8 +99,8 @@ impl<S,PS> Drop for MediaView<S,PS>
 
 
 impl<S,PS> DSP for MediaView<S,PS>
-    where S: 'static+Sample+Default+IntoSampleFmt+Unpin+IntoControlValue,
-          S::Float: IntoControlValue,
+    where S: 'static+Sample+Default+IntoSampleFmt+Unpin+IntoValue,
+          S::Float: IntoValue,
           PS: ProcessScope,
 {
     type Sample = S;
@@ -119,7 +122,7 @@ impl<S,PS> DSP for MediaView<S,PS>
         for i in 0..count {
             slice[i] = slice[i].mul_amp(self.amp);
         }
-        self.pos += count;
+        // self.pos += ts_ count;
         count
     }
 

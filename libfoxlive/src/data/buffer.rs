@@ -15,7 +15,7 @@ macro_rules! MakeChannelIter {
             phantom: PhantomData<&'a S>,
         }
 
-        impl<'a,S: Sample+Default> Iterator for $name<'a,S> {
+        impl<'a,S: Sample> Iterator for $name<'a,S> {
             type Item = &'a $($mut)* S;
 
             fn next(&mut self) -> Option<Self::Item> {
@@ -37,7 +37,7 @@ MakeChannelIter!{ChannelIterMut, mut}
 /// This trait provides methods to manipulate audio buffers.
 ///
 pub trait BufferView {
-    type Sample: Sample+Default;
+    type Sample: Sample;
 
     /// Total number of samples.
     fn len(&self) -> usize;
@@ -117,7 +117,7 @@ pub trait BufferView {
 
 
 /// Zip and map two input buffers, starting at b's sample index.
-pub fn zip_map<S: Sample+Default>(a: &mut dyn BufferView<Sample=S>, b: &dyn BufferView<Sample=S>,
+pub fn zip_map<S: Sample>(a: &mut dyn BufferView<Sample=S>, b: &dyn BufferView<Sample=S>,
                           func: impl Fn(&mut S,&S))
 {
     // TODO: this method should be profiled for cache misses and optimized
@@ -139,7 +139,7 @@ pub fn zip_map<S: Sample+Default>(a: &mut dyn BufferView<Sample=S>, b: &dyn Buff
 /// - From<(interleaved,n_channels,buffer)>
 ///
 pub struct Buffer<S,B>
-    where S: Sample+Default,
+    where S: Sample,
 {
     interleaved: bool,
     n_channels: NChannels,
@@ -148,7 +148,7 @@ pub struct Buffer<S,B>
 }
 
 
-impl<S: Sample+Default,B> Deref for Buffer<S,B> {
+impl<S: Sample,B> Deref for Buffer<S,B> {
     type Target = B;
 
     fn deref(&self) -> &Self::Target {
@@ -156,7 +156,7 @@ impl<S: Sample+Default,B> Deref for Buffer<S,B> {
     }
 }
 
-impl<S: Sample+Default,B> DerefMut for Buffer<S,B> {
+impl<S: Sample,B> DerefMut for Buffer<S,B> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.buffer
     }
@@ -166,7 +166,7 @@ macro_rules! ImplBuffer {
     ($alias:ident, $buffer_ty:ty $(, $lifetime:lifetime)?) => {
         /// Implement `From<(interleaved,n_channels,$buffer_ty)>` for Buffer
         impl<$($lifetime,)?S> From<(bool,NChannels,$buffer_ty)> for Buffer<S,$buffer_ty>
-            where S: Sample+Default,
+            where S: Sample,
         {
             fn from(v: (bool,NChannels,$buffer_ty)) -> Buffer<S,$buffer_ty> {
                 Buffer {
@@ -181,7 +181,7 @@ macro_rules! ImplBuffer {
         pub type $alias<$($lifetime,)?S> = Buffer<S,$buffer_ty>;
 
         impl<$($lifetime,)?S> BufferView for Buffer<S,$buffer_ty>
-            where S: Sample+Default,
+            where S: Sample,
         {
             type Sample = S;
 
@@ -251,11 +251,11 @@ ImplBuffer!{SliceBuffer, &'a mut [S], 'a}
 ImplBuffer!{VecBuffer, Vec<S>}
 
 
-impl<S: Sample+Default> Buffer<S,Vec<S>> {
+impl<S: Sample> Buffer<S,Vec<S>> {
     /// New empty buffer.
     pub fn new(interleaved: bool, n_channels: NChannels) -> Self {
         Buffer {
-            interleaved: true,
+            interleaved: interleaved,
             n_channels: n_channels,
             buffer: Vec::new(),
             phantom: PhantomData,
@@ -270,7 +270,7 @@ impl<S: Sample+Default> Buffer<S,Vec<S>> {
     /// New buffer with real capacity of `cap` samples.
     pub fn with_real_capacity(interleaved: bool, n_channels: NChannels, cap: usize) -> Self {
         Buffer {
-            interleaved: true,
+            interleaved: interleaved,
             n_channels: n_channels,
             buffer: Vec::with_capacity(cap),
             phantom: PhantomData,
@@ -285,14 +285,14 @@ impl<S: Sample+Default> Buffer<S,Vec<S>> {
     /// Update channels count (invalidate buffer content)
     pub fn resize(&mut self, n_channels: NChannels, n_samples: NSamples) {
         let cap = n_channels as usize * n_samples as usize;
-        self.buffer.resize(cap, S::default());
+        self.buffer.resize(cap, S::equilibrium());
         self.n_channels = n_channels;
     }
 
     /// Update channels count (invalidate buffer content)
     pub fn resize_channels(&mut self, n_channels: NChannels) {
         if self.n_channels != n_channels {
-            self.buffer.resize(n_channels as usize * self.n_samples(), S::default());
+            self.buffer.resize(n_channels as usize * self.n_samples(), S::equilibrium());
             self.n_channels = n_channels;
         }
     }

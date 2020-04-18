@@ -5,13 +5,14 @@ authors = ["bkfox <thomas bkfox net>"]
 edition = "2018"
 
 [dependencies]
-libc = "0.2.68"
-bitflags="1.2.1"
-smallvec="1.2.0"
-petgraph="0.5.0"
-ringbuf="0.2.1"
+libc = "0.2"
+futures="0.3"
+bitflags="1.2"
+smallvec="1.2"
+petgraph="0.5"
+ringbuf="0.2"
+bus="2.2"
 
-futures="0.3.4"
 sample="0.10.0"
 jack="0.6.2"
 

@@ -101,6 +101,15 @@ impl<S> Deref for ReaderContext<S>
 }
 
 
+/*
+pub struct ReadFrame<S> {
+    pub pos: Duration,
+    pub count: u16,
+    pub samples: [S;1024],
+}
+*/
+
+
 /// Audio file reader, reading data in an interleaved buffer.
 ///
 /// By itself it doesn't handle multithreading, but the provided
@@ -200,7 +209,7 @@ impl<S> Reader<S>
                     r = Poll::Pending;
 
                     // requested cache filled: send to handler and reset buffers
-                    if self.buffer.len() > self.cache.remaining() / 2 {
+                    if self.buffer.len() >= 1024 {
                         self.data_received(true);
                     }
                 }
@@ -216,10 +225,28 @@ impl<S> Reader<S>
     }
 
     /// Data received, send handler and update self's stuff.
-    fn data_received(&mut self, has_more: bool) {
-        // pos = self.frame.pkt_pts + self.frame.pkt_duration
-        // timebase = TimeBase::from(self.stream().time_base)
-        // pos = timebase.ts_to_duration(self.frame.pkt_pts + self.frame.pkt_duration)
+    fn data_received(&mut self, _has_more: bool) {
+        /*
+        let ctx = self.context.as_ref().unwrap();
+        let frame = unsafe { *ctx.frame };
+        let timebase = TimeBase::from(self.stream().unwrap().time_base);
+        let pos_step = samples_to_ts(1024, self.rate);
+        let end =  timebase.ts_to_duration(frame.pkt_pts + frame.pkt_duration);
+        let chunks = if has_more { self.buffer.chunks_exact(1024) }
+                     else { self.buffer.chunks(1024) }
+
+        let mut pos = end_pos - pos_step * (chunks.len() as u32);
+        let count = 0;
+        for chunk in self.buffer.chunks(1024) {
+            self.cache.push(ReadFrame {
+                pos: pos,
+                count: chunk.len(),
+                // problem: data are copied when written to ringbuf
+                data: Array::from(chunk),
+            }
+        }
+        */
+
 
         let count = self.cache.push_slice(&self.buffer);
         if self.buffer.len() == count {
@@ -335,7 +362,7 @@ impl<S> futures::Future for SharedReader<S>
                 }
                 r
             },
-            Err(err) => Poll::Ready(Err(Error::reader("reader poisoned"))),
+            Err(_) => Poll::Ready(Err(Error::reader("reader poisoned"))),
         }
     }
 

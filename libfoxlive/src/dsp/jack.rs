@@ -47,7 +47,7 @@ use jack as j;
 use smallvec::SmallVec;
 
 use crate as libfoxlive;
-use libfoxlive_derive::foxlive_controller;
+use libfoxlive_derive::object;
 use crate::data::{BufferView,NChannels,NSamples,NFrames};
 use crate::data::samples::*;
 use super::dsp::DSP;
@@ -65,78 +65,88 @@ impl ProcessScope for j::ProcessScope {
 }
 
 
-#[foxlive_controller("jack_input")]
-pub struct JackInput {
-    pub ports: SmallVec<[j::Port<j::AudioIn>; 2]>
-}
+pub mod input {
+    use super::*;
 
-impl DSP for JackInput {
-    type Sample=f32;
-    type Scope=j::ProcessScope;
+    #[object("jack_input")]
+    pub struct JackInput {
+        pub ports: SmallVec<[j::Port<j::AudioIn>; 2]>
+    }
 
-    fn process_audio(&mut self, scope: &Self::Scope, _input: Option<&dyn BufferView<Sample=Self::Sample>>,
-                     output: Option<&mut dyn BufferView<Sample=Self::Sample>>) -> usize
-    {
-        let output = output.expect("output not provided");
-        let mut n_samples = 0;
-        for (index, port) in self.ports.iter().enumerate() {
-            let slice = port.as_slice(scope);
-            merge_samples(output.channel_mut(index as NChannels).unwrap(), slice.iter());
-            n_samples += slice.len();
+    impl DSP for JackInput {
+        type Sample=f32;
+        type Scope=j::ProcessScope;
+
+        fn process_audio(&mut self, scope: &Self::Scope, _input: Option<&dyn BufferView<Sample=Self::Sample>>,
+                         output: Option<&mut dyn BufferView<Sample=Self::Sample>>) -> usize
+        {
+            let output = output.expect("output not provided");
+            let mut n_samples = 0;
+            for (index, port) in self.ports.iter().enumerate() {
+                let slice = port.as_slice(scope);
+                merge_samples(output.channel_mut(index as NChannels).unwrap(), slice.iter());
+                n_samples += slice.len();
+            }
+            n_samples
         }
-        n_samples
-    }
 
-    fn n_channels(&self) -> NChannels {
-        self.ports.len() as NChannels
-    }
+        fn n_channels(&self) -> NChannels {
+            self.ports.len() as NChannels
+        }
 
-    fn is_source(&self) -> bool { true }
+        fn is_source(&self) -> bool { true }
+    }
 }
 
+pub mod output {
+    use super::*;
 
-#[foxlive_controller("jack_output")]
-pub struct JackOutput {
-    pub ports: SmallVec<[j::Port<j::AudioOut>; 2]>
-}
+    #[object("jack_output")]
+    pub struct JackOutput {
+        pub ports: SmallVec<[j::Port<j::AudioOut>; 2]>
+    }
 
 
-impl JackOutput {
-    /// Create and register a multichannel jack output
-    pub fn acquire(client: &j::Client, name: &str, channels: NChannels) -> Self {
-        let ports = (0..channels)
-            .map(|channel| client.register_port(format!("{}_{}", name, channel).as_str(),
-                                                j::AudioOut::default())
-                                 .expect("port name too long"));
+    impl JackOutput {
+        /// Create and register a multichannel jack output
+        pub fn acquire(client: &j::Client, name: &str, channels: NChannels) -> Self {
+            let ports = (0..channels)
+                .map(|channel| client.register_port(format!("{}_{}", name, channel).as_str(),
+                                                    j::AudioOut::default())
+                                     .expect("port name too long"));
 
-        JackOutput {
-            ports: SmallVec::from_iter(ports)
+            JackOutput {
+                ports: SmallVec::from_iter(ports),
+            }
         }
     }
-}
 
 
 
-impl DSP for JackOutput {
-    type Sample=f32;
-    type Scope=j::ProcessScope;
+    impl DSP for JackOutput {
+        type Sample=f32;
+        type Scope=j::ProcessScope;
 
-    fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn BufferView<Sample=Self::Sample>>,
-                     _output: Option<&mut dyn BufferView<Sample=Self::Sample>>) -> usize
-    {
-        let input = input.expect("input not provided");
-        for (index, port) in self.ports.iter_mut().enumerate() {
-            let slice = port.as_mut_slice(scope);
-            // map_samples_inplace(slice, &|s| at.sin());
-            copy_samples(slice.iter_mut(), input.channel(index as NChannels).unwrap());
+        fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn BufferView<Sample=Self::Sample>>,
+                         _output: Option<&mut dyn BufferView<Sample=Self::Sample>>) -> usize
+        {
+            let input = input.expect("input not provided");
+            for (index, port) in self.ports.iter_mut().enumerate() {
+                let slice = port.as_mut_slice(scope);
+                // map_samples_inplace(slice, &|s| at.sin());
+                copy_samples(slice.iter_mut(), input.channel(index as NChannels).unwrap());
+            }
+            0
         }
-        0
-    }
 
-    fn n_channels(&self) -> NChannels {
-        self.ports.len() as NChannels
-    }
+        fn n_channels(&self) -> NChannels {
+            self.ports.len() as NChannels
+        }
 
-    fn is_sink(&self) -> bool { true }
+        fn is_sink(&self) -> bool { true }
+    }
 }
+
+pub use input::*;
+pub use output::*;
 

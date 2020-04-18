@@ -10,7 +10,7 @@ use libfoxlive::format;
 use libfoxlive::dsp::jack::*;
 use libfoxlive::dsp::graph::Graph;
 use libfoxlive::dsp::media::MediaView;
-use libfoxlive::dsp::controller::*;
+use libfoxlive::ui::{Object,Value};
 
 
 fn main() {
@@ -42,10 +42,10 @@ fn main() {
             // test controls
             if let Ok(elapsed) = now.elapsed() {
                 if elapsed.as_secs() > 3 {
-                    let amp : f32 = graph.get_control(0).unwrap().try_into().unwrap();
-                    graph.set_control(0, ControlValue::F32(amp * 0.90));
+                    let amp : f32 = graph.get_value(0).unwrap().try_into().unwrap();
+                    graph.set_value(0, Value::F32(amp * 0.90));
 
-                    graph.set_control(1, ControlValue::Duration(Duration::from_secs(5)));
+                    graph.set_value(1, Value::Duration(Duration::from_secs(5)));
                     now = SystemTime::now();
                 }
             }

@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use crate as libfoxlive;
-use libfoxlive_derive::foxlive_controller;
+use libfoxlive_derive::object;
 use crate::data::{BufferView,Sample,NChannels};
 
 use super::graph::ProcessScope;
@@ -9,7 +9,7 @@ use super::dsp::DSP;
 
 
 /// Implement DSP trait for a closure
-#[foxlive_controller("closure")]
+#[object("closure")]
 struct ClosureDSP<S,PS,F>
     where S: 'static+Sample,
           PS: 'static+ProcessScope,

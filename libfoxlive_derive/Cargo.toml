@@ -3,12 +3,13 @@ name = "libfoxlive_derive"
 version = "0.1.0"
 authors = ["bkfox <thomas bkfox net>"]
 edition = "2018"
+description = "Derive macros used in conjunction with libfoxlive"
 
 [lib]
 proc-macro = true
 
 [dependencies]
-syn = { version="1.0.17", features=["parsing","full"] }
+syn = { version="1.0.17", features=["full"] }
 quote = "1.0.3"
 proc-macro2 = "1.0.10"
 

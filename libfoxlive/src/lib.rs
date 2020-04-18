@@ -9,4 +9,6 @@
 pub mod data;
 pub mod dsp;
 pub mod format;
+pub mod rpc;
+pub mod ui;
 

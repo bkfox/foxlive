@@ -1,14 +1,12 @@
 use std::any::Any;
 
-use sample::Sample as sSample;
-
+use crate::rpc::Object;
 use crate::data::{BufferView,Sample,NChannels};
 use super::graph::ProcessScope;
-use super::controller::Controller;
 
 
 /// Generic DSP trait in order to process audio from graph.
-pub trait DSP: Any+Controller {
+pub trait DSP: Any+Object {
     type Sample: Sample;
     type Scope: ProcessScope;
 
@@ -34,6 +32,6 @@ pub trait DSP: Any+Controller {
 }
 
 
-pub type BoxedDSP<S, PS> = Box<dyn DSP<Sample=S,Scope=PS>>;
+pub type BoxedDSP<S, PS> = Box<dyn DSP<Sample=S,Scope=PS>+Sync>;
 
 

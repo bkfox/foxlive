@@ -37,7 +37,7 @@ pub enum ControlValue {
 }
 
 
-pub trait IntoControlValue : TryFrom<ControlValue>+Into<ControlValue> {}
+pub trait IntoValue : TryFrom<ControlValue>+Into<ControlValue> {}
 
 
 macro_rules! ImplControlValue {
@@ -59,7 +59,7 @@ macro_rules! ImplControlValue {
             }
         }
 
-        impl IntoControlValue for $type {}
+        impl IntoValue for $type {}
     }
 }
 
@@ -103,7 +103,7 @@ pub trait ControlsMapper {
 /// The crate *libfoxlive_derive* provides macros in order to implement this trait:
 ///
 /// ```rust
-/// #[foxlive_controller("optional_name")]
+/// #[object("optional_name")]
 /// #[meta(description, "simple dsp")]
 /// pub struct MyDSP {
 ///     #[control(F32(1.0,1.0,0.1), "param1"]

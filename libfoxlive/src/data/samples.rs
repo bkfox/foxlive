@@ -1,8 +1,4 @@
 /// Provides types and utilities to manipulate samples.
-use std::fmt::{Display,Debug};
-use std::ops::{Add,Mul};
-use std::marker::Unpin;
-
 pub use sample::Sample;
 
 use super::ffi;
@@ -33,7 +29,7 @@ impl SampleFmt {
 
 /// Sample to SampleFmt conversion
 pub trait IntoSampleFmt {
-    fn into_sample_fmt(interleaved: bool) -> SampleFmt { SampleFmt::None }
+    fn into_sample_fmt(_interleaved: bool) -> SampleFmt { SampleFmt::None }
 
     fn into_sample_ffi(interleaved: bool) -> ffi::AVSampleFormat {
         Self::into_sample_fmt(interleaved).as_ffi()
@@ -76,8 +72,9 @@ impl IntoSampleFmt for f64 {
 }
 
 
+/*
 /// Generic trait for samples
-/*pub trait Sample: 'static+sample::Sample+
+pub trait Sample: 'static+sample::Sample+
                   Add<Output=Self>+Mul<Output=Self>+
                   Default+IntoSampleFmt+Unpin+Display+Debug {}
 
@@ -90,7 +87,8 @@ impl Sample for i32 {}
 
 impl Sample for f32 {}
 
-impl Sample for f64 {}*/
+impl Sample for f64 {}
+*/
 
 
 /// Sample rate

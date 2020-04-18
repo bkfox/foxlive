@@ -13,7 +13,7 @@ pub struct TimeBase {
 impl TimeBase {
     /// Return a duration from provided timestamp (unit in rational time_base)
     pub fn ts_to_duration(&self, timestamp: i64) -> Duration {
-        Duration::from_micros(self.num as u64 * 1000000 / self.den as u64)
+        Duration::from_micros(timestamp as u64 * self.num as u64 * 1000000 / self.den as u64)
     }
 
     /// Return a timestamp from the provided duration (unit in time_base)
