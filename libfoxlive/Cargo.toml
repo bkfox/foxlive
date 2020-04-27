@@ -6,10 +6,12 @@ edition = "2018"
 
 [dependencies]
 libc = "0.2"
-futures="0.3"
 bitflags="1.2"
 smallvec="1.2"
 petgraph="0.5"
+
+futures="0.3"
+futures-util = "0.3.4"
 ringbuf="0.2"
 bus="2.2"
 

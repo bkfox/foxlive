@@ -10,7 +10,7 @@ use libfoxlive::format;
 use libfoxlive::dsp::jack::*;
 use libfoxlive::dsp::graph::Graph;
 use libfoxlive::dsp::media::MediaView;
-use libfoxlive::ui::{Object,Value};
+use libfoxlive::rpc::{Object,Value};
 
 
 fn main() {

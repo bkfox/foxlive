@@ -37,9 +37,38 @@ pub struct Unit<S,PS>
     pub dsp: BoxedDSP<S, PS>,
 }
 
+pub type Ix = ObjectIndex;
+pub type NodeIndex = sg::NodeIndex<Ix>;
+pub type EdgeIndex = sg::EdgeIndex<Ix>;
+pub type Dag<S,PS> = sg::StableGraph<Unit<S,PS>, (), pg::Directed, Ix>;
+
+
+/// Audio graph processing directed acyclic DSP nodes.
+pub struct Graph<S,PS>
+    where S: 'static+Sync+Sample, PS: 'static+Sync+ProcessScope+Clone
+{
+    /// The graph.
+    dag: Dag<S,PS>,
+    /// Nodes topologically sorted
+    ordered_nodes: Vec<NodeIndex>,
+    /// Max number of channels supported by nodes
+    n_channels: NChannels,
+    /// Buffer arena used to store nodes outputs.
+    buffers: Vec<S>,
+    /// A temporary buffer used in processing
+    dry_buffer: Buffer<S,Vec<S>>,
+    /// Node objects values map
+    objects_map: BTreeMap<ObjectIndex, (NodeIndex,MemberMap)>,
+    /// Events transport broadcasting responses to all receivers (this allows to have a pubsub
+    /// without the cost of multiple event queues).
+    transport: Option<BroadcastChannel<service::Response<S,PS>,service::Request<S,PS>>>,
+}
+
+
 impl<S,PS> Unit<S,PS>
     where S: 'static+Sync+Sample, PS: 'static+Sync+ProcessScope
 {
+    /// Create a new unit
     fn new(dsp: BoxedDSP<S, PS>) -> Self
     {
         Unit {
@@ -71,7 +100,6 @@ impl<D,S,PS> From<D> for Unit<S,PS>
     }
 }
 
-
 impl<S,PS> Deref for Unit<S,PS>
     where S: 'static+Sync+Sample, PS: 'static+Sync+ProcessScope
 {
@@ -83,26 +111,6 @@ impl<S,PS> Deref for Unit<S,PS>
 }
 
 
-pub type Ix = ObjectIndex;
-pub type NodeIndex = sg::NodeIndex<Ix>;
-pub type EdgeIndex = sg::EdgeIndex<Ix>;
-pub type Dag<S,PS> = sg::StableGraph<Unit<S,PS>, (), pg::Directed, Ix>;
-
-
-
-pub struct Graph<S,PS>
-    where S: 'static+Sync+Sample, PS: 'static+Sync+ProcessScope+Clone
-{
-    dag: Dag<S,PS>,
-    ordered_nodes: Vec<NodeIndex>,
-    n_channels: NChannels,
-    buffers: Vec<S>,
-    dry_buffer: Buffer<S,Vec<S>>,
-    objects_map: BTreeMap<ObjectIndex, (NodeIndex,MemberMap)>,
-    transport: Option<BroadcastChannel<service::Response<S,PS>,service::Request<S,PS>>>,
-}
-
-
 unsafe impl<S,PS> Sync for Graph<S,PS>
     where S: 'static+Sync+Sample, PS: 'static+Sync+ProcessScope+Clone
 {}
@@ -110,7 +118,6 @@ unsafe impl<S,PS> Sync for Graph<S,PS>
 unsafe impl<S,PS> Send for Graph<S,PS>
     where S: 'static+Sync+Sample, PS: 'static+Sync+ProcessScope+Clone
 {}
-
 
 impl<S,PS> Graph<S,PS>
     where S: 'static+Sync+Sample, PS: 'static+Sync+ProcessScope+Clone
@@ -134,14 +141,14 @@ impl<S,PS> Graph<S,PS>
     }
 
     /// Init event channel, returning other channel of the channel
-    pub fn init_transport(&mut self, cap: u64)
+    pub fn init_transport(&mut self, cap: usize)
         -> Option<BroadcastChannelRev<service::Response<S,PS>,service::Request<S,PS>>>
     {
         if self.transport.is_some() {
             return None;
         }
 
-        let (a, b) = BroadcastChannel::new(cap);
+        let (a, b) = BroadcastChannel::channel(cap);
         self.transport = Some(a);
         Some(b)
     }
@@ -264,7 +271,6 @@ impl<S,PS> Graph<S,PS>
             _ => {}
         };
     }
-
 }
 
 #[service]
@@ -282,22 +288,19 @@ impl<S,PS> Graph<S,PS>
     }
 
     /// Add a new node as child of the provided parent.
-    pub fn add_child(&mut self, parent: NodeIndex, dsp: BoxedDSP<S,PS>) -> NodeIndex
-    {
+    pub fn add_child(&mut self, parent: NodeIndex, dsp: BoxedDSP<S,PS>) -> NodeIndex {
         let child = self.add_node(dsp);
         self.dag.add_edge(parent, child, ());
         child
     }
 
     /// Add edge between two nodes
-    pub fn add_edge(&mut self, parent: NodeIndex, child: NodeIndex) -> EdgeIndex
-    {
+    pub fn add_edge(&mut self, parent: NodeIndex, child: NodeIndex) -> EdgeIndex {
         self.dag.add_edge(parent, child, ())
     }
 
     /// Remove a node
-    pub fn remove_node(&mut self, node: NodeIndex)
-    {
+    pub fn remove_node(&mut self, node: NodeIndex) {
         self.dag.remove_node(node);
     }
 
@@ -318,7 +321,7 @@ impl<S,PS> Object for Graph<S,PS>
     where S: 'static+Sync+Sample, PS: 'static+Sync+ProcessScope+Clone
 {
     fn object_meta(&self) -> ObjectMeta {
-        ObjectMeta::new("none", None)
+        ObjectMeta::new("graph", None)
     }
 
     fn get_value(&self, index: ObjectIndex) -> Option<Value> {

@@ -6,6 +6,8 @@
 //! - Library: audio files libraries, including metadata scanning.
 //! - User interface: generic controllers over graph supporting MIDI and GUI.
 //!
+#![feature(associated_type_bounds)]
+
 pub mod data;
 pub mod dsp;
 pub mod format;
