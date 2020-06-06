@@ -3,7 +3,10 @@ pub mod dsp;
 pub mod graph;
 
 pub mod closure;
+
+#[cfg(feature="jack")]
 pub mod jack;
+
 pub mod media;
 
 

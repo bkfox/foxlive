@@ -14,13 +14,13 @@
 extern crate proc_macro;
 
 use std::convert::From;
-use syn;
 use proc_macro::{TokenStream};
 use proc_macro2::{TokenStream as TokenStream2};
 use quote::{quote,ToTokens};
+use syn;
 use syn::{parse, parse2, parse_str,
-          Attribute, AttrStyle, DeriveInput,
-          Expr, Ident, Lit};
+          Attribute, DeriveInput,
+          Expr, Ident};
 
 
 /// Run over attributes with the provided function, removing attribute when `func` returns `true`.
@@ -33,27 +33,6 @@ fn drain_attrs(attrs: &mut Vec<Attribute>, mut func: impl FnMut(&Attribute) -> b
         }
         else { i += 1 }
     }
-}
-
-
-/// Read "meta" attribute, returning it as `(key, value)`.
-/// Attribute format: `#[meta("key","value")]`.
-fn read_meta_attr(attr: &Attribute) -> Option<String> {
-    if let AttrStyle::Outer = attr.style {
-        if attr.path.is_ident("meta") {
-            if let Ok(Expr::Assign(expr)) = attr.parse_args::<Expr>() {
-                if let (Expr::Path(left),Expr::Lit(right)) = (*expr.left, *expr.right) {
-                    if let Lit::Str(right) = right.lit {
-                        return Some(format!("(String::from(\"{}\"), String::from(\"{}\"))",
-                            left.path.get_ident().unwrap().to_string(),
-                            right.value())
-                        )
-                    }
-                }
-            }
-        }
-    }
-    None
 }
 
 
@@ -74,7 +53,7 @@ impl Metadatas {
 
     /// Add a metadata from attribute, return true if it has been taken.
     fn push_attr(&mut self, attr: &syn::Attribute) -> bool {
-        if let AttrStyle::Inner(_) = attr.style {
+        if let syn::AttrStyle::Inner(_) = attr.style {
             return false;
         }
         if !attr.path.is_ident("meta") {
