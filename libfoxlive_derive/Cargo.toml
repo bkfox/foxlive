@@ -9,7 +9,7 @@ description = "Derive macros used in conjunction with libfoxlive"
 proc-macro = true
 
 [dependencies]
-syn = { version="1.0.17", features=["full"] }
+syn = { version="1.0", features=["full"] }
 quote = "1.0.3"
 proc-macro2 = "1.0.10"
 

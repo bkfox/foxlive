@@ -10,49 +10,49 @@
 // FIXME
 #include <libavutil/opt.h>
 
-//: use type AVCodec
-//: use type AVCodecContext
-//: use type AVFormatContext
-//: use type AVDiscard
-//: use type AVRounding
-//: use type SwrContext
+//: type AVCodec
+//: type AVCodecContext
+//: type AVFormatContext
+//: type AVDiscard
+//: type AVRounding
+//: type SwrContext
 //
-//: use fn avcodec_register_all
+//: fn avcodec_register_all
 //
-//: use fn av_strerror
-//: use fn av_register_all
-//: use fn av_rescale_rnd
-//: use fn av_rescale
-//: use fn av_get_bytes_per_sample
+//: fn av_strerror
+//: fn av_register_all
+//: fn av_rescale_rnd
+//: fn av_rescale
+//: fn av_get_bytes_per_sample
 //
-//: use fn av_frame_alloc
-//: use fn av_frame_free
-//: use fn av_read_frame
-//: use fn av_seek_frame
+//: fn av_frame_alloc
+//: fn av_frame_free
+//: fn av_read_frame
+//: fn av_seek_frame
 //
-//: use fn av_packet_alloc
-//: use fn av_packet_free
-//: use fn av_packet_unref
+//: fn av_packet_alloc
+//: fn av_packet_free
+//: fn av_packet_unref
 //
-//: use fn avformat_open_input
-//: use fn avformat_find_stream_info
-//: use fn avformat_close_input
+//: fn avformat_open_input
+//: fn avformat_find_stream_info
+//: fn avformat_close_input
 //
-//: use fn avcodec_alloc_context3
-//: use fn avcodec_find_decoder
-//: use fn avcodec_free_context
-//: use fn avcodec_open2
-//: use fn avcodec_send_packet
-//: use fn avcodec_receive_frame
-//: use fn avcodec_parameters_to_context
+//: fn avcodec_alloc_context3
+//: fn avcodec_find_decoder
+//: fn avcodec_free_context
+//: fn avcodec_open2
+//: fn avcodec_send_packet
+//: fn avcodec_receive_frame
+//: fn avcodec_parameters_to_context
 //
-//: use fn swr_alloc_set_opts
-//: use fn swr_convert
-//: use fn swr_free
-//: use fn swr_get_delay
-//: use fn swr_init
+//: fn swr_alloc_set_opts
+//: fn swr_convert
+//: fn swr_free
+//: fn swr_get_delay
+//: fn swr_init
 //
-//: use type AVDictionaryEntry
-//: use fn av_dict_get
+//: type AVDictionaryEntry
+//: fn av_dict_get
 
 

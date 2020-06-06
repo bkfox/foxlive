@@ -28,10 +28,10 @@ pub struct MediaView<S,PS>
     /// Cached data as ringbuffer consumer
     cache: Consumer<S>,
     /// Amplification
-    #[field(I32(0,0,0), "amp")]
+    #[field("amplitude", I32(1))]
     amp: S::Float,
     /// Reading position
-    #[field(Duration, "pos", tell, seek)]
+    #[field("position", Duration, get(tell), set(seek))]
     pos: Duration,
     /// Stream information
     pub infos: Option<StreamInfo>,

@@ -14,3 +14,6 @@ pub mod format;
 pub mod rpc;
 pub mod ui;
 
+#[cfg(feature="build")]
+pub mod build;
+

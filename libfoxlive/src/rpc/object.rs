@@ -4,7 +4,7 @@ use super::value::*;
 
 
 /// Metadata as (key, value)
-pub type Metadata = (String,String);
+pub type Metadata = (&'static str, &'static str);
 
 /// List of metadatas for controller and its controls
 pub type Metadatas = Vec<Metadata>;
@@ -69,16 +69,18 @@ pub trait Object {
 
 
 /// Field information used for mapping
-pub struct MemberMap {
+pub struct FieldInfo {
     pub index: ObjectIndex,
     pub value_type: ValueType,
-    pub metadata: Metadatas,
+    pub default: Option<Value>,
+    pub range: Option<Range>,
+    pub metadatas: Metadatas,
 }
 
 
 /// Trait providing interface to map object
 pub trait ObjectMapper{
     /// Declare a member
-    fn declare(&mut self, index: ObjectIndex, value_type: ValueType, metadata: Metadatas);
+    fn declare(&mut self, field_info: FieldInfo);
 }
 

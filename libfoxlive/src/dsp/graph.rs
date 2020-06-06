@@ -58,7 +58,7 @@ pub struct Graph<S,PS>
     /// A temporary buffer used in processing
     dry_buffer: Buffer<S,Vec<S>>,
     /// Node objects values map
-    objects_map: BTreeMap<ObjectIndex, (NodeIndex,MemberMap)>,
+    objects_map: BTreeMap<ObjectIndex, (NodeIndex,FieldInfo)>,
     /// Events transport broadcasting responses to all receivers (this allows to have a pubsub
     /// without the cost of multiple event queues).
     transport: Option<BroadcastChannel<service::Response<S,PS>,service::Request<S,PS>>>,
@@ -259,7 +259,7 @@ impl<S,PS> Graph<S,PS>
 
     /// Map object for a provided node
     fn map_node_object(&mut self, index: NodeIndex) {
-        match self.dag.node_weight_mut(index) {
+        /*match self.dag.node_weight_mut(index) {
             Some(node) if !node.mapped => {
                 let mut mapper = GraphObjectMapper {
                     objects_map: &mut self.objects_map,
@@ -269,7 +269,7 @@ impl<S,PS> Graph<S,PS>
                 node.mapped = true;
             },
             _ => {}
-        };
+        };*/
     }
 }
 
@@ -317,6 +317,7 @@ impl<S,PS> Graph<S,PS>
 }
 
 
+/*
 impl<S,PS> Object for Graph<S,PS>
     where S: 'static+Sync+Sample, PS: 'static+Sync+ProcessScope+Clone
 {
@@ -349,7 +350,7 @@ impl<S,PS> Object for Graph<S,PS>
 
 pub struct GraphObjectMapper<'a>
 {
-    objects_map: &'a mut BTreeMap<ObjectIndex,(NodeIndex,MemberMap)>,
+    objects_map: &'a mut BTreeMap<ObjectIndex,(NodeIndex,FieldInfo)>,
     node: NodeIndex,
 }
 
@@ -357,13 +358,12 @@ pub struct GraphObjectMapper<'a>
 impl<'a> ObjectMapper for GraphObjectMapper<'a> {
     fn declare(&mut self, index: ObjectIndex, value_type: ValueType, metadata: Metadatas)
     {
-        self.objects_map.insert(self.objects_map.len() as ObjectIndex, (self.node, MemberMap {
-            index: index,
-            value_type: value_type,
+        self.objects_map.insert(self.objects_map.len() as ObjectIndex, (self.node, FieldInfo {
+            index, value_type
             metadata: Vec::from(metadata),
         }));
     }
-}
+}*/
 
 
 

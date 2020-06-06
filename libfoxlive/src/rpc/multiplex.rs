@@ -1,4 +1,12 @@
-/// Implement a simple multiplexing transport.
+//! This modules provide structs that implements message multiplexing among multiple
+//! receiver, that can either be used for any connection endpoint (client, server, ...).
+//!
+//! A Channel is the multiplexed transport's endpoint for a specific request id. It can be used
+//! to receive a single message or a stream of messages. The default Channel (whose `id=None`)
+//! gets all messages that haven't be handled by other channels.
+//!
+//! The function `multiplex` is used to create a multiplexed transport.
+//!
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::{Arc,RwLock};
@@ -29,6 +37,8 @@ pub struct Multiplex<S,R>
 }
 
 
+/// Interface used to handle a multiplexed transport. A Channel transport handles message for
+/// a specific `request_id`, use to receive/send a single or a stream of messages.
 pub struct Channel<S,R>
     where S: Frame, R: Frame<Id=S::Id>,
 {
@@ -199,7 +209,7 @@ impl<S,R> Channel<S,R>
         }
     }
 
-    /// Create a new channel
+    /// Create a new channel, using provided `make` function to generate sender and receiver
     pub fn add_channel(&mut self, id: S::Id, make: impl Fn() -> (MxSender<R>, MxReceiver<R>))
         -> Option<Self>
     {
@@ -382,7 +392,6 @@ impl<T> channel::ChannelSender for MxSender<T> {
 
 #[cfg(test)]
 mod test {
-    use futures::join;
     use futures::executor::LocalPool;
     use futures_util::task::LocalSpawnExt;
     use super::*;
@@ -426,5 +435,7 @@ mod test {
 
         pool.run();
     }
+
+    // Todo: close channel, timeout, stream
 }
 

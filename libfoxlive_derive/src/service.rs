@@ -182,7 +182,7 @@ impl<'a> Service<'a> {
 }
 
 
-/// Macro attribute generating RPC service traits and types, for the decorated
+/// Macro generating RPC service traits and types, for the decorated
 /// struct impl block.
 pub fn service(_attrs: TokenStream, input: TokenStream) -> TokenStream {
     let ast = syn::parse::<syn::ItemImpl>(input).unwrap();

@@ -15,11 +15,12 @@ extern crate proc_macro;
 
 use std::convert::From;
 use syn;
-use proc_macro::TokenStream;
+use proc_macro::{TokenStream};
+use proc_macro2::{TokenStream as TokenStream2};
 use quote::{quote,ToTokens};
 use syn::{parse, parse2, parse_str,
-          Attribute, AttrStyle, DataStruct, DeriveInput,
-          Expr, Field, Ident, Lit, Meta};
+          Attribute, AttrStyle, DeriveInput,
+          Expr, Ident, Lit};
 
 
 /// Run over attributes with the provided function, removing attribute when `func` returns `true`.
@@ -35,74 +36,8 @@ fn drain_attrs(attrs: &mut Vec<Attribute>, mut func: impl FnMut(&Attribute) -> b
 }
 
 
-/// Read "field" attribute, returning it as `(type, name)`.
-/// Attribute format: `#[field(type, label?, get_func, set_func)]`
-fn read_field_attr(field: String, attr: &Attribute) -> Option<(Expr, String, Expr, Expr)> {
-    if !attr.path.is_ident("field") {
-        return None;
-    }
-    if let AttrStyle::Outer = attr.style {
-        if let Meta::List(meta) = attr.parse_meta().unwrap() {
-            let args = meta.nested;
-            if let syn::NestedMeta::Meta(ref meta) = args[0] {
-                let meta = meta.to_token_stream();
-
-                // field type
-                let c_type = parse2::<Expr>(meta).unwrap();
-
-                let mut n = 1;
-
-                // label?
-                let mut label = String::new();
-                if args.len() > n {
-                    if let syn::NestedMeta::Lit(Lit::Str(ref label_)) = args[n] {
-                        label = label_.value();
-                        n += 1;
-                    }
-                }
-
-                // getter?
-                let mut get = None;
-                let mut set = None;
-                if args.len() > n {
-                    if let syn::NestedMeta::Meta(ref meta) = args[n] {
-                        let meta = meta.to_token_stream();
-                        let ident = parse2::<Ident>(meta).unwrap().to_string();
-                        get = parse_str::<Expr>(&format!("self.{}().into()", ident)).ok();
-                        n += 1;
-
-                        // set? (implies get)
-                        if args.len() > n {
-                            if let syn::NestedMeta::Meta(ref meta) = args[n] {
-                                let meta = meta.to_token_stream();
-                                let ident = parse2::<Ident>(meta).unwrap().to_string();
-                                set = parse_str::<Expr>(&format!("self.{}(value).map(|r| r.into()).or(Err(()))", ident)).ok();
-                                // n += 1;
-                            }
-                            else { panic!("invalid set argument"); }
-                        }
-                    }
-                    else { panic!("invalid get argument"); }
-                }
-
-                if get.is_none(){
-                    get = parse_str::<Expr>(&format!("self.{}.into()", field)).ok();
-                }
-
-                if set.is_none() {
-                    set = parse_str::<Expr>(&format!("{{ self.{} = value; Ok(value.into()) }}", field)).ok();
-                }
-
-                return Some((c_type, label, get.unwrap(), set.unwrap()));
-            }
-        }
-    }
-    None
-}
-
-
 /// Read "meta" attribute, returning it as `(key, value)`.
-/// Attribute format: `#[meta(key="value")]`.
+/// Attribute format: `#[meta("key","value")]`.
 fn read_meta_attr(attr: &Attribute) -> Option<String> {
     if let AttrStyle::Outer = attr.style {
         if attr.path.is_ident("meta") {
@@ -122,143 +57,275 @@ fn read_meta_attr(attr: &Attribute) -> Option<String> {
 }
 
 
-/// Return field informations as: `field, field_type, get, set, metas`.
-fn get_field_info(field: &mut Field) -> Option<(Ident, Expr, Expr, Expr, Expr)> {
-    let field_ident = field.ident.as_ref().unwrap();
-
-    let mut infos = None;
-    let mut metas = String::new();
-
-    drain_attrs(&mut field.attrs, |attr| {
-        if let Some((c_type_, name, get, set)) = read_field_attr(field_ident.to_string(), attr) {
-            infos = Some((c_type_, get, set));
-            if !name.is_empty() {
-                metas += &format!("(String::from(\"name\"),String::from(\"{}\"))", name);
-            }
-            return true;
-        }
-
-        if let Some(meta) = read_meta_attr(attr) {
-            metas += &meta;
-            metas += ", ";
-            return true;
-        }
-        false
-    });
-
-    infos.map(|(c_type, get, set)| {
-        let metas = if metas.is_empty() { String::from("Vec::new()") }
-                    else { format!("vec![{}]", metas) };
-        (field_ident.clone(),
-         c_type, get, set,
-         syn::parse_str::<syn::Expr>(&metas).unwrap())
-    })
+/// Object or Field metadatas, as `[meta("key","value")]`
+struct Metadatas {
+    items: Vec<syn::Expr>,
 }
 
-
-/// Get all fields info as unzipped lists of elements (because quote does not access
-/// value fields)
-fn get_fields(data_struct: &mut DataStruct)
-    -> (Vec<syn::Index>, Vec<Ident>, Vec<Expr>, Vec<Expr>, Vec<Expr>, Vec<Expr>)
-{
-    let fields = data_struct.fields.iter_mut().filter_map(get_field_info);
-    let (mut a, mut b, mut c, mut d, mut e, mut f) =
-        (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
-
-    fields.enumerate().for_each(|(index, field)| {
-        a.push(syn::Index::from(index));
-        b.push(field.0);
-        c.push(field.1);
-        d.push(field.2);
-        e.push(field.3);
-        f.push(field.4);
-    });
-
-    (a, b, c, d, e, f)
-}
-
-
-/// Return object informations as: `metadata`.
-/// #[foxlive_object(label?)]
-fn get_object(attrs: TokenStream, ast: &mut DeriveInput) -> Expr {
-    let mut metas = String::new();
-
-    // attrs
-    if !attrs.is_empty() {
-        let name = parse::<syn::LitStr>(attrs).unwrap();
-        metas += &format!("(String::from(\"name\"),String::from(\"{}\")),", name.value());
+impl Metadatas {
+    fn new() -> Self {
+        Self { items: Vec::new() }
     }
 
-    // metadata
-    drain_attrs(&mut ast.attrs, |attr| {
-        if let Some(meta) = read_meta_attr(attr) {
-            metas += &(meta + ",");
-            true
-        }
-        else { false }
-    });
+    /// Add metadata from Expr.
+    fn push(&mut self, expr: syn::Expr) {
+        self.items.push(expr);
+    }
 
-    let metas = if metas.is_empty() { String::from("Metadatas::new()") }
-                else { format!("vec![{}]", metas) };
-    syn::parse_str::<syn::Expr>(&metas).unwrap()
+    /// Add a metadata from attribute, return true if it has been taken.
+    fn push_attr(&mut self, attr: &syn::Attribute) -> bool {
+        if let AttrStyle::Inner(_) = attr.style {
+            return false;
+        }
+        if !attr.path.is_ident("meta") {
+            return false;
+        }
+
+        self.push(parse2::<syn::Expr>(attr.tokens.clone())
+                      .expect("can not parse meta declaration"));
+        true
+    }
+
+    /// Add metadata from key and value
+    fn insert(&mut self, key: &str, value: String) {
+        self.push(parse_str::<syn::Expr>(&format!("(\"{}\", \"{}\")", key, value)).
+                    unwrap())
+    }
+
+    fn render(&self) -> TokenStream2 {
+        let items = &self.items;
+        quote! { vec![#(#items),*] }
+    }
+}
+
+
+
+/// Declaration an object's field as:
+///     `[field("label", I32(0.1), range(0,0,1),? get(getter),? set(setter)?)]`
+///
+/// Where:
+/// - `"label"`: field's human-readable label
+/// - `I32(0.1)`: field type and default value
+/// - `range(...)`: value range
+/// - `get`: specifies a getter method
+/// - `set`: specifies a setter method
+struct FieldDecl {
+    ident: Ident,
+    value_type: Expr,
+    default: Option<syn::punctuated::Punctuated<Expr,syn::token::Comma>>,
+    range: Option<syn::punctuated::Punctuated<Expr,syn::token::Comma>>,
+    // metadatas as vec of ["(String::from("key"),String::from("value")]
+    metadatas: Metadatas,
+    get: Expr,
+    set: Expr,
+}
+
+impl FieldDecl {
+    fn new(field: &mut syn::Field) -> Option<Self> {
+        let (attr_i, attr) = match field.attrs.iter().enumerate().find(|(i, attr)| attr.path.is_ident("field")) {
+            Some(attr) => attr,
+            None => return None,
+        };
+
+        let decl = parse2::<syn::ExprTuple>(attr.tokens.clone())
+                    .expect("can not parse field declaration");
+        let mut args = decl.elems.iter();
+
+        // label
+        let label = match args.next().expect("missing field label") {
+            syn::Expr::Lit(ref lit) => match lit.lit {
+                syn::Lit::Str(ref lit) => lit.value(),
+                _ => panic!("expected label string"),
+            },
+            _ => panic!("invalid field label"),
+        };
+
+        let value_type = args.next().expect("missing field type").clone();
+        let (value_type, default) = match value_type {
+            Expr::Call(ref arg) => (*arg.func.clone(), Some(arg.args.clone())),
+            _ => (value_type, None),
+        };
+
+        let (mut range, mut get, mut set) = (None, None, None);
+        for arg in args {
+            if let Expr::Call(arg) = arg {
+                if let Expr::Path(path) = arg.func.as_ref() {
+                    let ident = path.path.get_ident()
+                                    .expect("invalid argument ident {:?}")
+                                    .to_string();
+                    match &ident[..] {
+                        "get" => { get = Some(arg.args.first()
+                                                 .expect("missing `get` argument").clone()
+                                                 .to_token_stream().to_string()); },
+                        "set" => { set = Some(arg.args.first()
+                                                 .expect("missing `set` argument").clone()
+                                                 .to_token_stream().to_string()); },
+                        "range" => { range = Some(arg.args.clone());
+                        },
+                        _ => panic!("invalid argument {}", ident),
+                    }
+                }
+            }
+        }
+
+        // metadatas
+        let mut metadatas = Metadatas::new();
+        metadatas.insert("label", label);
+        drain_attrs(&mut field.attrs, |attr| metadatas.push_attr(attr));
+
+        // finalize
+        let ident = field.ident.as_ref().unwrap().clone();
+        let ident_str = ident.to_string();
+
+        field.attrs.remove(attr_i);
+
+        Some(Self {
+            ident, value_type, default, range, metadatas,
+            get: parse_str::<Expr>(&format!("self.{}.into()", get
+                    .map(|v| v + "()")
+                    .unwrap_or_else(|| ident_str.clone())))
+                    .unwrap(),
+            set: parse_str::<Expr>(&set
+                    .map(|v| format!("self.{}(value).map(|r| r.into()).or(Err(()))", v))
+                    .unwrap_or_else(|| format!("{{ self.{} = value; Ok(value.into()) }}", ident_str.clone()))
+                    ).unwrap(),
+        })
+    }
+
+    fn render_map(&self, index: usize) -> TokenStream2 {
+        let Self { value_type, default, range, metadatas, .. } = self;
+
+        let default = match default {
+            Some(args) => quote! { Some(Value::#value_type(#args)) },
+            None => quote! { None }
+        };
+        let range = match range {
+            Some(args) => quote! { Some(Range::#value_type(#args)) },
+            None => quote! { None }
+        };
+        let metadatas = metadatas.render();
+
+        quote! {
+            mapper.declare(FieldInfo {
+                index: #index as ObjectIndex,
+                value_type: ValueType::#value_type,
+                default: #default, range: #range,
+                metadatas: #metadatas
+            });
+        }
+    }
+}
+
+
+
+struct Object {
+    ast: syn::DeriveInput,
+    metadatas: Metadatas,
+    fields: Vec<FieldDecl>,
+}
+
+impl Object {
+    pub fn new(attrs: TokenStream, mut ast: syn::DeriveInput) -> Self {
+        let metadatas = Self::get_metadatas(attrs, &mut ast);
+        let mut obj = Object {
+            ast, metadatas, fields: Vec::new(),
+        };
+        obj.get_fields();
+        obj
+    }
+
+    /// Read metadatas
+    fn get_metadatas(attrs: TokenStream, ast: &mut syn::DeriveInput) -> Metadatas {
+        let mut metadatas = Metadatas::new();
+
+        if !attrs.is_empty() {
+            // provided label
+            let label = parse::<syn::LitStr>(attrs).unwrap();
+            metadatas.insert("label", label.value());
+        }
+
+        drain_attrs(&mut ast.attrs, |attr| metadatas.push_attr(attr));
+        metadatas
+    }
+
+    /// Read a fields declarations and attributes
+    fn get_fields(&mut self) {
+        let ds = match &mut self.ast.data {
+            syn::Data::Struct(ref mut ds) => ds,
+            _ => panic!("can't read object as struct"),
+        };
+
+        for field in ds.fields.iter_mut() {
+            if let Some(field) = FieldDecl::new(field) {
+                self.fields.push(field);
+            }
+        }
+    }
+
+    pub fn render(&self) -> TokenStream {
+        let ast = &self.ast;
+
+        let name = &ast.ident;
+        let impl_mod_name = parse_str::<syn::Ident>(&format!("impl_object_for_{}", &name.to_string())).unwrap();
+        let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
+
+        let metadatas = &self.metadatas.render();
+        let f_map = self.fields.iter().enumerate().map(|(i, f)| f.render_map(i));
+        let (f_index, f_get, f_set) = (
+            (0..self.fields.len()).collect::<Vec<_>>(),
+            self.fields.iter().map(|f| &f.get).collect::<Vec<_>>(),
+            self.fields.iter().map(|f| &f.set).collect::<Vec<_>>(),
+        );
+
+        let expanded = quote! {
+            #ast
+
+            mod #impl_mod_name {
+                use super::*;
+                use libfoxlive::rpc::*;
+
+                impl #impl_generics Object for #name #ty_generics #where_clause {
+                    fn object_meta(&self) -> ObjectMeta {
+                        // TODO: label "name" or #name
+                        ObjectMeta::new("#name", Some(#metadatas))
+                    }
+
+                    fn get_value(&self, index: ObjectIndex) -> Option<Value> {
+                        use std::convert::TryInto;
+                        match index as usize {
+                            #(#f_index => Some(#f_get),)*
+                            _ => None,
+                        }
+                    }
+
+                    fn set_value(&mut self, index: ObjectIndex, value: Value) -> Result<Value, ()> {
+                        use std::convert::TryInto;
+                        match index as usize {
+                            #(#f_index =>
+                                if let Ok(value) = value.try_into() {
+                                    #f_set
+                                } else { Err(()) }
+                            ),*
+                            _ => Err(()),
+                        }
+                    }
+
+                    fn map_object(&self, mapper: &mut dyn ObjectMapper) {
+                        #(#f_map)*
+                    }
+                }
+            }
+        };
+
+        // Hand the output tokens back to the compiler
+        TokenStream::from(expanded)
+    }
 }
 
 
 pub fn object(attrs: TokenStream, input: TokenStream) -> TokenStream {
-    let mut ast = parse::<DeriveInput>(input).unwrap();
-
-    let object_meta = get_object(attrs, &mut ast);
-    let name = &ast.ident;
-
-    let data_struct = match &mut ast.data {
-        syn::Data::Struct(ref mut ds) => ds,
-        _ => panic!("object only for struct"),
-    };
-    let (fields_index, _fields, fields_type, fields_get, fields_set, fields_meta) = get_fields(data_struct);
-
-    let impl_mod_name = parse_str::<syn::Ident>(&format!("impl_object_for_{}", name.to_string())).unwrap();
-    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
-    let expanded = quote! {
-        #ast
-
-        mod #impl_mod_name {
-            use super::*;
-            use libfoxlive::rpc::*;
-
-            impl #impl_generics Object for #name #ty_generics #where_clause {
-                fn object_meta(&self) -> ObjectMeta {
-                    // TODO: label "name" or #name
-                    ObjectMeta::new("#name", Some(#object_meta))
-                }
-
-                fn get_value(&self, index: ObjectIndex) -> Option<Value> {
-                    use std::convert::TryInto;
-                    match index {
-                        #(#fields_index => Some(#fields_get),)*
-                        _ => None,
-                    }
-                }
-
-                fn set_value(&mut self, index: ObjectIndex, value: Value) -> Result<Value, ()> {
-                    use std::convert::TryInto;
-                    match index {
-                        #(#fields_index =>
-                            if let Ok(value) = value.try_into() {
-                                #fields_set
-                            } else { Err(()) }
-                        ),*
-                        _ => Err(()),
-                    }
-                }
-
-                fn map_object(&self, mapper: &mut dyn ObjectMapper) {
-                    #(mapper.declare(#fields_index, ValueType::#fields_type, #fields_meta);)*
-                }
-            }
-        }
-    };
-
-    // Hand the output tokens back to the compiler
-    TokenStream::from(expanded)
+    let ast = parse::<DeriveInput>(input).expect("can not parse input");
+    let object = Object::new(attrs, ast);
+    object.render()
 }
 
