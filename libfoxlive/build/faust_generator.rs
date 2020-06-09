@@ -17,7 +17,7 @@ pub struct FaustGenerator {
     pub dest: String,
     pub name: String,
     pub struct_name: String,
-    pub metadatas: Vec<(String,String)>,
+    pub faust_code: String,
 }
 
 
@@ -29,7 +29,7 @@ impl FaustGenerator {
         let name = String::from(Path::new(&source).file_stem().and_then(|p| p.to_str()).unwrap());
         let struct_name = to_class_case(&name);
         FaustGenerator { source, dest, name, struct_name,
-                         metadatas: Vec::new() }
+                         faust_code: String::new() }
     }
 
     /// Build dsp only if source file has changed since last build.

@@ -7,6 +7,7 @@
 //! - User interface: generic controllers over graph supporting MIDI and GUI.
 //!
 #![feature(associated_type_bounds)]
+#![feature(ptr_offset_from)]
 
 pub mod data;
 pub mod dsp;

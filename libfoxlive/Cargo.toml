@@ -9,7 +9,7 @@ build="build/main.rs"
 default = ["build"]
 
 build = ["bindgen", "regex", "Inflector"]
-jack = ["jack"]
+with_jack = ["jack"]
 
 [dependencies]
 libc = "0.2"

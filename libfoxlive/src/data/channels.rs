@@ -1,11 +1,37 @@
-/// Provides Channels trait used to manipulate multi-channels frames.
+//! This module provides structs to manipulate audio channel.
+use std::ops::{Index,IndexMut};
+use std::ptr::NonNull;
+use std::iter::ExactSizeIterator;
+use std::marker::PhantomData;
 use bitflags::bitflags;
 
 use super::ffi;
 
 
+/// Number of channels
+pub type NChannels = u8;
+
+
+/// A single audio channel over an audio buffer, handling panned and interleaved
+/// samples. Samples can be accessed through iteration or index.
+pub struct Channel<'a, S: 'a> {
+    ptr: NonNull<S>,
+    end: *const S,
+    step: NChannels,
+    phantom: PhantomData<&'a S>,
+}
+
+/// Audio channel whose iteration is made over mutable samples.
+pub struct ChannelMut<'a, S: 'a> {
+    ptr: NonNull<S>,
+    end: *const S,
+    step: NChannels,
+    phantom: PhantomData<&'a S>,
+}
+
+
 bitflags! {
-    /// Channel layouts
+    /// Channel layout (reuse FFMPEG's values).
     pub struct ChannelLayout : u64 {
         const FRONT_LEFT = 0x00000001;
         const FRONT_RIGHT = 0x00000002;
@@ -66,6 +92,67 @@ bitflags! {
 }
 
 
+macro_rules! ImplChannel {
+    ($name:ident $(, $mut:tt)?) => {
+        impl<'a,S: 'a> $name<'a,S> {
+            /// Create a new channel over a buffer of given pointer and size. Samples will
+            /// be read from the offset `start`, with a distance in buffer expressed as
+            /// `step`.
+            pub fn new(ptr: NonNull<S>, len: usize, start: usize, step: NChannels) -> Self {
+                let end = unsafe { ptr.as_ptr().offset(len as isize) };
+                let ptr = unsafe { NonNull::new(ptr.as_ptr().offset(start as isize)).unwrap() };
+                Self { ptr, end, step, phantom: PhantomData }
+            }
+        }
+
+        impl<'a,S: 'a> Iterator for $name<'a,S> {
+            type Item = &'a $($mut)* S;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                let ptr = self.ptr.as_ptr();
+                if (ptr as *const S) < self.end {
+                    self.ptr = unsafe { NonNull::new(ptr.offset(self.step as isize)).unwrap() };
+                    Some(unsafe { & $($mut)* *ptr })
+                }
+                else { None }
+            }
+        }
+
+        impl<'a,S: 'a> ExactSizeIterator for $name<'a,S> {
+            fn len(&self) -> usize {
+                let offset = unsafe { self.end.offset_from(self.ptr.as_ptr() as *const S) };
+                offset as usize / self.step as usize
+            }
+        }
+
+        impl<'a,S: 'a> Index<usize> for $name<'a,S> {
+            type Output = S;
+
+            fn index(&self, index: usize) -> &Self::Output {
+                let index = index * self.step as usize;
+                match unsafe { self.ptr.as_ptr().offset(index as isize) } {
+                    ptr if ptr as *const S >= self.end => panic!("index out of range"),
+                    ptr => unsafe { ptr.as_ref().unwrap() }
+                }
+            }
+        }
+
+        impl<'a,S: 'a> IndexMut<usize> for $name<'a,S> {
+            fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+                let index = index * self.step as usize;
+                match unsafe { self.ptr.as_ptr().offset(index as isize) } {
+                    ptr if ptr as *const S >= self.end => panic!("index out of range"),
+                    ptr => unsafe { ptr.as_mut().unwrap() }
+                }
+            }
+        }
+    }
+}
+
+ImplChannel!{Channel}
+ImplChannel!{ChannelMut, mut}
+
+
 impl ChannelLayout {
     /// Return layout for the given number of channels
     pub fn from_n_channels(n_channels: NChannels) -> Option<Self> {
@@ -84,9 +171,5 @@ impl ChannelLayout {
     }
 }
 
-
-
-/// Number of channels
-pub type NChannels = u8;
 
 

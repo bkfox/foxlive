@@ -6,34 +6,6 @@ use super::samples::*;
 use super::channels::*;
 
 
-macro_rules! MakeChannelIter {
-    ($name:ident $(, $mut:tt)?) => {
-        pub struct $name<'a, S: 'a> {
-            step: NChannels,
-            ptr: NonNull<S>,
-            end: *const S,
-            phantom: PhantomData<&'a S>,
-        }
-
-        impl<'a,S: Sample> Iterator for $name<'a,S> {
-            type Item = &'a $($mut)* S;
-
-            fn next(&mut self) -> Option<Self::Item> {
-                let ptr = self.ptr.as_ptr();
-                if (ptr as *const S) < self.end {
-                    self.ptr = unsafe { NonNull::new(ptr.offset(self.step as isize)).unwrap() };
-                    Some(unsafe { & $($mut)* *ptr })
-                }
-                else { None }
-            }
-        }
-    }
-}
-
-MakeChannelIter!{ChannelIter}
-MakeChannelIter!{ChannelIterMut, mut}
-
-
 /// This trait provides methods to manipulate audio buffers.
 ///
 pub trait BufferView {
@@ -58,15 +30,15 @@ pub trait BufferView {
     fn get_layout(&self) -> Option<ChannelLayout>;
 
     /// Iterator over a channel's samples
-    fn channel(&self, channel: NChannels) -> Option<ChannelIter<Self::Sample>>;
+    fn channel(&self, channel: NChannels) -> Option<Channel<Self::Sample>>;
 
     /// Mutable iterator over channel's samples.
-    fn channel_mut<'a>(&'a mut self, channel: NChannels) -> Option<ChannelIterMut<'a,Self::Sample>>;
+    fn channel_mut<'a>(&'a mut self, channel: NChannels) -> Option<ChannelMut<'a,Self::Sample>>;
 
-    /// Slice over internal buffer
+    /// Slice over buffer's data
     fn as_slice(&self) -> &[Self::Sample];
 
-    /// Mutable slice over internal buffer
+    /// Mutable slice over buffer's data
     fn as_slice_mut(&mut self) -> &mut[Self::Sample];
 
     /// Map function and update self consequently
@@ -209,28 +181,26 @@ macro_rules! ImplBuffer {
                 ChannelLayout::from_n_channels(self.n_channels)
             }
 
-            fn channel(&self, channel: NChannels) -> Option<ChannelIter<Self::Sample>> {
+            fn channel(&self, channel: NChannels) -> Option<Channel<Self::Sample>> {
                 if self.n_channels != 0 && channel < self.n_channels {
-                    let pos = unsafe { self.buffer.as_ptr().offset(self.n_channels as isize - 1) };
-                    Some(ChannelIter {
-                        step: self.n_channels,
-                        ptr: unsafe { NonNull::from(pos.as_ref().unwrap()) },
-                        end: unsafe { self.buffer.as_ptr().offset(self.buffer.len() as isize) },
-                        phantom: PhantomData,
-                    })
+                    Some(Channel::new(
+                        NonNull::new(self.buffer.as_ptr() as *mut S).unwrap(),
+                        self.buffer.len(),
+                        channel as usize,
+                        self.n_channels,
+                    ))
                 }
                 else { None }
             }
 
-            fn channel_mut(&mut self, channel: NChannels) -> Option<ChannelIterMut<Self::Sample>> {
+            fn channel_mut(&mut self, channel: NChannels) -> Option<ChannelMut<Self::Sample>> {
                 if self.n_channels != 0 && channel < self.n_channels {
-                    let pos = unsafe { self.buffer.as_ptr().offset(self.n_channels as isize - 1) };
-                    Some(ChannelIterMut {
-                        step: self.n_channels,
-                        ptr: unsafe { NonNull::from(pos.as_ref().unwrap()) },
-                        end: unsafe { self.buffer.as_ptr().offset(self.buffer.len() as isize) },
-                        phantom: PhantomData,
-                    })
+                    Some(ChannelMut::new(
+                        NonNull::new(self.buffer.as_ptr() as *mut S).unwrap(),
+                        self.buffer.len(),
+                        channel as usize,
+                        self.n_channels,
+                    ))
                 }
                 else { None }
             }

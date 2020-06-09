@@ -4,7 +4,7 @@ pub mod graph;
 
 pub mod closure;
 
-#[cfg(feature="jack")]
+#[cfg(feature="with_jack")]
 pub mod jack;
 
 pub mod media;
