@@ -49,7 +49,7 @@ use smallvec::SmallVec;
 use crate as libfoxlive;
 use libfoxlive_derive::object;
 use crate::data::{BufferView,NChannels,NSamples,NFrames};
-use crate::data::samples::*;
+use crate::data::sample::*;
 use super::dsp::DSP;
 use super::graph::ProcessScope;
 

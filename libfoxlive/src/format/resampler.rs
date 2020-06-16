@@ -25,10 +25,10 @@ impl<S: Sample+IntoSampleFmt> Resampler<S> {
     {
         let layout = layout.unwrap_or(context.channel_layout());
         unsafe {
-            // TODO: take bufferview as argument, use it for into_sample_ffi's param
+            // TODO: take bufferview as argument, use it for sample_ffi's param
             //       and keep reference to it
             let swr = ffi::swr_alloc_set_opts(null_mut(),
-                layout.signed(), S::into_sample_ffi(true), sample_rate,
+                layout.signed(), S::sample_ffi(true), sample_rate,
                 context.channel_layout().signed(), context.sample_fmt, context.sample_rate,
                 0, null_mut()
             );

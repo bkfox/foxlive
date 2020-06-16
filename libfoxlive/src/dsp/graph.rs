@@ -9,7 +9,7 @@ use petgraph::stable_graph as sg;
 use crate as libfoxlive;
 use libfoxlive_derive::service;
 use crate::data::*;
-use crate::data::samples::fill_samples;
+use crate::data::sample::fill_samples;
 use crate::rpc::channel::*;
 use crate::rpc::*;
 

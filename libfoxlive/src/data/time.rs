@@ -1,6 +1,6 @@
 //! Time manipulation.
 pub use std::time::Duration;
-use super::samples::{SampleRate,NSamples};
+use super::sample::{SampleRate,NSamples};
 
 
 /// Time base rational used in stream to calculate frame timestamps (see

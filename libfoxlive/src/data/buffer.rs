@@ -2,9 +2,10 @@ use std::marker::PhantomData;
 use std::ops::{Deref,DerefMut};
 use std::ptr::*;
 
-use super::samples::*;
-use super::channels::*;
+use super::sample::*;
+use super::channel::*;
 
+// TODO: set_layout + test for n_channels change
 
 /// This trait provides methods to manipulate audio buffers.
 ///
@@ -27,7 +28,7 @@ pub trait BufferView {
     fn set_interleaved(&mut self, interleaved: bool);
 
     /// Get channel layout
-    fn get_layout(&self) -> Option<ChannelLayout>;
+    fn layout(&self) -> ChannelLayout;
 
     /// Iterator over a channel's samples
     fn channel(&self, channel: NChannels) -> Option<Channel<Self::Sample>>;
@@ -103,6 +104,54 @@ pub fn zip_map<S: Sample>(a: &mut dyn BufferView<Sample=S>, b: &dyn BufferView<S
 }
 
 
+
+/// Zip and map two input buffers, starting at b's sample index.
+pub fn zip_map_mix<S: Sample>(a: &mut dyn BufferView<Sample=S>, b: &dyn BufferView<Sample=S>,
+                              func: impl Fn(&mut S,&S))
+{
+
+    /*
+             M L R SL SR C LFE
+        1-2    M M
+        1-4    M M  0  0
+        1-6    0 0  0  0 M   0
+        2-4    L R  0  0
+        2-6    L R  0  0 0
+        4-6    L R SL SR 0   0
+
+        mono:  
+        n
+
+
+        2-1  M: 0.5*(L+R)
+        4-1  M: 0.25*(L+R+SL+SR)
+        4-2  L: 0.5*(L+SL)
+             R: 0.5*(R+SR)
+        6-1  M: 0.7071 * (L + R) + C + 0.5 * (SL + SR)
+        6-2  L: L + 0.7071 * (C + SL)
+             R: R + 0.7071 * (C + SR)
+        6-4  L: L + 0.7071 * C
+             R: R + 0.7071 * C
+            SL: SL
+            SR: SR
+    */
+}
+
+/// Zip and map two input buffers, starting at b's sample index.
+pub fn zip_map_mix_discrete<S: Sample>(a: &mut dyn BufferView<Sample=S>, b: &dyn BufferView<Sample=S>,
+                              func: impl Fn(&mut S,&S))
+{
+    /*
+        Up-mix discrete channels.
+        Fill each output channel with its input counterpart, that is the input channel with the same index. Channels with no corresponding input channels are left silent.
+
+        Down-mix discrete channels.
+        Fill each output channel with its input counterpart, that is the input channel with the same index. Input channels with no corresponding output channels are dropped.
+    */
+}
+
+
+
 /// Audio buffer implementation, handling interleaved and panned buffers.
 ///
 /// Generic `S` is Sample type, `B` the actual buffer's type. This module
@@ -114,7 +163,7 @@ pub struct Buffer<S,B>
     where S: Sample,
 {
     interleaved: bool,
-    n_channels: NChannels,
+    layout: ChannelLayout,
     pub buffer: B,
     phantom: PhantomData<S>,
 }
@@ -143,7 +192,20 @@ macro_rules! ImplBuffer {
             fn from(v: (bool,NChannels,$buffer_ty)) -> Buffer<S,$buffer_ty> {
                 Buffer {
                     interleaved: v.0,
-                    n_channels: v.1,
+                    layout: ChannelLayout::from_n_channels(v.1).unwrap(),
+                    buffer: v.2,
+                    phantom: PhantomData,
+                }
+            }
+        }
+
+        impl<$($lifetime,)?S> From<(bool,ChannelLayout,$buffer_ty)> for Buffer<S,$buffer_ty>
+            where S: Sample,
+        {
+            fn from(v: (bool,ChannelLayout,$buffer_ty)) -> Buffer<S,$buffer_ty> {
+                Buffer {
+                    interleaved: v.0,
+                    layout: v.1,
                     buffer: v.2,
                     phantom: PhantomData,
                 }
@@ -162,11 +224,11 @@ macro_rules! ImplBuffer {
             }
 
             fn n_samples(&self) -> NSamples {
-                self.buffer.len() / self.n_channels as usize
+                self.buffer.len() / self.n_channels() as usize
             }
 
             fn n_channels(&self) -> NChannels {
-                self.n_channels
+                self.layout.n_channels()
             }
 
             fn interleaved(&self) -> bool {
@@ -177,17 +239,17 @@ macro_rules! ImplBuffer {
                 self.interleaved = interleaved;
             }
 
-            fn get_layout(&self) -> Option<ChannelLayout> {
-                ChannelLayout::from_n_channels(self.n_channels)
+            fn layout(&self) -> ChannelLayout {
+                self.layout
             }
 
             fn channel(&self, channel: NChannels) -> Option<Channel<Self::Sample>> {
-                if self.n_channels != 0 && channel < self.n_channels {
+                if channel < self.n_channels() {
                     Some(Channel::new(
                         NonNull::new(self.buffer.as_ptr() as *mut S).unwrap(),
                         self.buffer.len(),
                         channel as usize,
-                        self.n_channels,
+                        self.n_channels(),
                     ))
                 }
                 else { None }
@@ -223,10 +285,9 @@ ImplBuffer!{VecBuffer, Vec<S>}
 
 impl<S: Sample> Buffer<S,Vec<S>> {
     /// New empty buffer.
-    pub fn new(interleaved: bool, n_channels: NChannels) -> Self {
+    pub fn new(interleaved: bool, layout: ChannelLayout) -> Self {
         Buffer {
-            interleaved: interleaved,
-            n_channels: n_channels,
+            interleaved, layout,
             buffer: Vec::new(),
             phantom: PhantomData,
         }

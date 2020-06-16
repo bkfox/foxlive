@@ -16,6 +16,22 @@ pub trait DSP: Any+Object {
     fn process_audio(&mut self, scope: &Self::Scope, input: Option<&dyn BufferView<Sample=Self::Sample>>,
                      output: Option<&mut dyn BufferView<Sample=Self::Sample>>) -> usize;
 
+    // FIXME: return number of optional NChannels
+    //
+    // Having a DSP Graph such as:
+    //
+    //      media = n => effects => n => mixer => 2
+    //
+    // A DSP with None n_channels will have same output channels as input. Graph should take it
+    // in account in order to have consistent buffer.
+    //
+    // Question is: should we have n_outputs and n_inputs separately?
+    // - mapping in zip_map(..., mix):
+    //      - allows to easilly handles channel mapping
+    //      - down/up mixing will be done only when n_output || n_input will be Some
+    //      - graph input mixing is handled automatically
+    //      - graph building should handle None values for shared buffer
+    //      - 
     /// Return number of handled channels
     fn n_channels(&self) -> NChannels {
         0
