@@ -1,5 +1,3 @@
-use super::multiplex::*;
-
 /// Generic Service trait that handles requests and call corresponding RPC method.
 pub trait Service {
     type Request;
